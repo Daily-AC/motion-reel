@@ -36,7 +36,7 @@ npx skills add Daily-AC/motion-reel --skill motion-reel -g
 
 ## 手动跑通
 
-依赖 Node.js22+、Python3.10+、FFmpeg/ffprobe、支持 WebGL2 浮点目标的 Chrome/Chromium。浏览器找不到时设置 `CHROME_PATH`。联络表脚本额外用 Pillow。
+依赖 Node.js 22+、Python 3.10+、FFmpeg/ffprobe、支持 WebGL2 浮点目标的 Chrome/Chromium。浏览器找不到时设置 `CHROME_PATH`。联络表脚本额外用 Pillow。
 
 ```sh
 git clone https://github.com/Daily-AC/motion-reel.git

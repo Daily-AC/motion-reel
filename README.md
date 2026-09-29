@@ -6,7 +6,7 @@
 
 [![Codex case-study poster](docs/codex-poster.jpg)](https://github.com/Daily-AC/motion-reel/releases/download/v0.1.0/codex-showcase.mp4)
 
-[▶ Watch the15-second Codex case study](https://github.com/Daily-AC/motion-reel/releases/download/v0.1.0/codex-showcase.mp4)
+[▶ Watch the 15-second Codex case study](https://github.com/Daily-AC/motion-reel/releases/download/v0.1.0/codex-showcase.mp4)
 
 This package came out of an iterated film, not a prompt collection. The initial cut was technically valid but too static; the next had sufficient movement but felt sparse. The accepted result kept its motion and gained a coherent palette, spatial response and selective detail. A flat reflection was removed after it failed in motion. Those decisions are part of the skill.
 
@@ -20,12 +20,12 @@ Or clone this repository and ask an agent to read `skills/motion-reel/SKILL.md`.
 
 Example request:
 
-> Use $motion-reel to make a15-second launch film for a fictional precision camera brand. Warm amber, ivory and near-black. The message is “Find your focus.” Give it original instrumental sound and an actual MP4.
+> Use $motion-reel to make a 15-second launch film for a fictional precision camera brand. Warm amber, ivory and near-black. The message is “Find your focus.” Give it original instrumental sound and an actual MP4.
 
 ## What is included
 
 - A concise directing skill, with separate guides for composition, production and review.
-- An editable15-second starter with3D shapes, kinetic type, particles, spatial interfaces and original synthesized audio.
+- An editable 15-second starter with 3D shapes, kinetic type, particles, spatial interfaces and original synthesized audio.
 - Linear-light temporal sampling, a shared beat grid, seeded geometry and a deterministic frame-capture pipeline.
 - Portable project scaffolding, dependency checks, encoded-output verification and motion-strip generation.
 - A random-string association tool, used as a source of ideas rather than a quality metric.
@@ -33,7 +33,7 @@ Example request:
 
 ## Try the starter without an agent
 
-Requirements: Node.js22+, Python3.10+, FFmpeg/ffprobe and Chrome/Chromium with WebGL2 float targets. Set `CHROME_PATH` if automatic discovery fails. Pillow is only needed for contact sheets.
+Requirements: Node.js 22+, Python 3.10+, FFmpeg/ffprobe and Chrome/Chromium with WebGL2 float targets. Set `CHROME_PATH` if automatic discovery fails. Pillow is only needed for contact sheets.
 
 ```sh
 git clone https://github.com/Daily-AC/motion-reel.git
@@ -47,7 +47,7 @@ python3 verify.py out/nova.mp4
 uv run --with pillow python review.py out/nova.mp4 --strip 7.65:9.20:20
 ```
 
-Use `--scale 2` for a native4K master. `node render.mjs preview` serves a silent interactive preview; stop it when finished. Generated projects are self-contained and contain the source, fonts and tools needed to rebuild.
+Use `--scale 2` for a native 4K master. `node render.mjs preview` serves a silent interactive preview; stop it when finished. Generated projects are self-contained and contain the source, fonts and tools needed to rebuild.
 
 The starter is a vocabulary, not an eight-shot mandate. Change the subject's argument, relevant behavior, identity and handoffs. Recompose for portrait. Merely changing a name or adding more particles is not the method.
 
@@ -61,4 +61,4 @@ Technical validity, visual acceptance and audience response are separate. The in
 
 Code and original guidance: [MIT](LICENSE). Fonts and third-party material retain their own licenses; see [THIRD_PARTY.md](THIRD_PARTY.md). Codex/OpenAI marks in the case study are not covered as original toolkit branding and do not imply endorsement.
 
-Created by Daily-AC with Claude and Codex. The rendering foundation came from an earlier local code-motion workflow; this skill distills the later film's art direction, review and portability work. [Lemo-Opuscar](https://github.com/lemomo-ai/lemo-opuscar) was related inspiration; its39-style catalog is not bundled here.
+Created by Daily-AC with Claude and Codex. The rendering foundation came from an earlier local code-motion workflow; this skill distills the later film's art direction, review and portability work. [Lemo-Opuscar](https://github.com/lemomo-ai/lemo-opuscar) was related inspiration; its 39-style catalog is not bundled here.
