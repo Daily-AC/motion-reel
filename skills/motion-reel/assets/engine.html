@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Motion Reel</title>
+<style>
+@font-face{font-family:"Reel Sans";src:url("fonts/InterVariable.woff2");font-weight:100 900}
+@font-face{font-family:"JetBrains Mono";src:url("fonts/JetBrainsMono-Regular.ttf")}
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  body { display: grid; place-items: center; }
+  canvas { width: 100vw; height: calc(100vw * 9 / 16); max-height: 100vh; max-width: calc(100vh * 16 / 9); }
+</style>
+</head>
+<body>
+<canvas id="out"></canvas>
+<script>
+'use strict';
+// ============================================================================================
+//  Timeline. Pick BPM × bars to hit the duration exactly (128 BPM × 8 bars = 15 s); cut on downbeats.
+// ============================================================================================
+const Q = new URLSearchParams(location.search);
+const BRAND = {{CONFIG_JSON}};
+const VERT = BRAND.height > BRAND.width; //                 // 1080×1920 cut for vertical feeds
+const W=BRAND.width,H=BRAND.height,FPS=BRAND.fps,BPM=BRAND.bpm,BEAT=60/BPM,BAR=4*BEAT;
+const BARS=BRAND.bars,DUR=BARS*BAR;                 // musical duration
+const MX = VERT ? 72 : 120, FCAM = VERT ? 860 : 1100;
+const MODE = Q.get('mode') || 'preview';
+const SCALE = +(Q.get('scale') || 1), SUB = +(Q.get('sub') || 16), SHUTTER = 0.5;
+const PW = W * SCALE, PH = H * SCALE;
+const SHOT=i=>i*BAR;                     // one bar per demonstration shot
+const LABELS=['IGNITION','THOUGHT','TRANSFORM','POSSIBILITY','BUILD','CREATE','MOMENTUM','SIGNATURE'];                 // HUD section names, one per shot
+const INK=BRAND.palette.ink,PAPER=BRAND.palette.paper,ACCENT=BRAND.palette.accent;   // one accent; swap for the brand's palette when its logo appears
+const rgbOf = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+const RGB = { ink: rgbOf(INK), paper: rgbOf(PAPER), accent: rgbOf(ACCENT) };
+const SANS = BRAND.displayFont || '"Reel Sans", system-ui', MONO = '"JetBrains Mono", Menlo, monospace';
+const F = (w, px, fam = SANS) => `${w} ${px}px ${fam}`;
+
+// ---------------------------------------------------------------------------------- math
+const clamp = (x, a = 0, b = 1) => x < a ? a : x > b ? b : x;
+const lerp = (a, b, t) => a + (b - a) * t;
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const fract = x => x - Math.floor(x);
+const E = {
+  inQ: x => x * x, outQ: x => 1 - (1 - x) * (1 - x),
+  inC: x => x * x * x, outC: x => 1 - Math.pow(1 - x, 3), ioC: x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2,
+  outQn: x => 1 - Math.pow(1 - x, 5),
+  inE: x => x <= 0 ? 0 : Math.pow(2, 10 * x - 10), outE: x => x >= 1 ? 1 : 1 - Math.pow(2, -10 * x),
+  ioE: x => x <= 0 ? 0 : x >= 1 ? 1 : x < .5 ? Math.pow(2, 20 * x - 10) / 2 : (2 - Math.pow(2, -20 * x + 10)) / 2,
+  outBack: (x, s = 1.7) => 1 + (s + 1) * Math.pow(x - 1, 3) + s * Math.pow(x - 1, 2),
+  inBack: (x, s = 1.7) => (s + 1) * x * x * x - s * x * x,
+  ioS: x => 0.5 - 0.5 * Math.cos(Math.PI * x),
+};
+// damped harmonic step response: 0 → 1 with overshoot
+function spring(u, f = 3, z = 0.4) {
+  if (u <= 0) return 0;
+  const w = 2 * Math.PI * f, wd = w * Math.sqrt(1 - z * z);
+  return 1 - Math.exp(-z * w * u) * (Math.cos(wd * u) + z * w / wd * Math.sin(wd * u));
+}
+function mulberry32(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const mix = (a, b, t) => `rgb(${a.map((v, i) => Math.round(lerp(v, b[i], t))).join(',')})`;
+const shade = (c, k) => `rgb(${c.map(v => Math.round(clamp(v * k, 0, 255))).join(',')})`;
+const lastBeat = t => Math.floor(t / BEAT + 1e-9) * BEAT;
+const kickEnv = (t, k = 10) => (t >= SHOT(1) && t < DUR) ? Math.exp(-(t - lastBeat(t)) * k) : 0;
+
+// camera: yaw around world Y, pitch = looking down, distance D, focal f. y is up in world.
+function camera(yaw, pitch, D, f = FCAM) {
+  const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+  return {
+    pos: [-sy * cp * D, sp * D, -cy * cp * D],
+    p(x, y, z) {
+      const X = cy * x - sy * z, Z = sy * x + cy * z;
+      const Y2 = cp * y + sp * Z, Z2 = -sp * y + cp * Z + D;
+      const s = f / Z2;
+      return [W / 2 + X * s, H / 2 - Y2 * s, Z2, s];
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------------- drawing helpers
+function bg(ctx, c) { ctx.fillStyle = c; ctx.fillRect(-200, -200, W + 400, H + 400); }
+function rrect(ctx, x, y, w, h, r) { r = Math.min(r, w / 2, h / 2); ctx.beginPath(); ctx.roundRect(x, y, w, h, r); }
+function textLS(ctx, s, x, y, ls) { ctx.letterSpacing = ls + 'px'; ctx.fillText(s, x, y); ctx.letterSpacing = '0px'; }
+
+// ============================================================================================
+//  Impacts: camera shake + chromatic aberration are driven from the same hit list as the audio.
+// ============================================================================================
+const HITS = [[0,10],[SHOT(1),10],[SHOT(2),10],[SHOT(3),14],[SHOT(4),11],[SHOT(5),12],[SHOT(6),15],[SHOT(7),12]];                        // [time, strength]: camera shake + chromatic aberration on impacts
+function shake(t) {
+  let x = 0, y = 0;
+  for (const [ti, a] of HITS) {
+    const u = t - ti;
+    if (u >= 0 && u < 0.7) { const e = a * (1 - Math.exp(-u * 150)) * Math.exp(-u * 12); x += e * Math.sin(u * 83 + ti); y += e * Math.cos(u * 71 + ti * 2); }
+  }
+  return [x, y];
+}
+function caAt(t) {
+  let c = 0.00012;
+  for (const [ti, a] of HITS) { const u = t - ti; if (u >= 0 && u < 0.6) c += a * 0.00016 * Math.exp(-u * 13); }
+  return c;
+}
+
+// ============================================================================================
+//  Authored scene sources. Draw from time, keep the opening complete, and design cut handoffs.
+// ============================================================================================
+{{SYMBOL_JS}}
+{{SCENES_JS}}
+
+// ============================================================================================
+//  Optional identity and scene labels
+// ============================================================================================
+const HUD_TONE=[PAPER,INK,PAPER,PAPER,PAPER,INK,PAPER,INK];
+function hud(ctx,t,tf,shot){
+ if(shot===7)return;
+ ctx.save();ctx.font=F(550,15,MONO);ctx.fillStyle=HUD_TONE[shot];ctx.globalAlpha=.67;
+ ctx.textAlign='left';ctx.fillText(BRAND.name+' / '+BRAND.eyebrow,68,65);
+ ctx.textAlign='right';ctx.fillText(LABELS[shot],W-68,H-56);ctx.restore();
+}
+
+// ============================================================================================
+//  Frame compositor: N subframes of the 2D scene are accumulated in linear light (motion blur),
+//  then one post pass adds chromatic aberration, vignette and grain.
+// ============================================================================================
+const SCENES=[S0,S1,S2,S3,S4,S5,S6,S7];
+// the shot comes from the frame time, so all subframes of a frame belong to one shot: cuts never blend
+const shotAt = tf => { let s = 0; while (s + 1 < SCENES.length && tf >= SHOT(s + 1) - 1e-9) s++; return s; };
+const sc = document.createElement('canvas'); sc.width = PW; sc.height = PH;
+const ctx = sc.getContext('2d', { alpha: false });
+const out = document.getElementById('out'); out.width = PW; out.height = PH;
+const gl = out.getContext('webgl2', { antialias: false, preserveDrawingBuffer: true, alpha: false, premultipliedAlpha: false });
+if(!gl)throw new Error('WebGL2 is unavailable');
+if(!gl.getExtension('EXT_color_buffer_float'))throw new Error('Floating-point color targets unavailable');
+const VS = `#version 300 es
+in vec2 p; out vec2 uv; void main(){ uv = p * 0.5 + 0.5; gl_Position = vec4(p, 0.0, 1.0); }`;
+const FS_ACC = `#version 300 es
+precision highp float; uniform sampler2D tex; uniform float w; in vec2 uv; out vec4 o;
+void main(){ vec3 c = texture(tex, uv).rgb; o = vec4(pow(c, vec3(2.2)) * w, 1.0); }`;
+const FS_POST = `#version 300 es
+precision highp float; uniform sampler2D acc; uniform float ca, vig, grain; uniform uint seed; uniform vec2 res; in vec2 uv; out vec4 o;
+uint pcg(uint v){ uint s = v * 747796405u + 2891336453u; uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u; return (w >> 22u) ^ w; }
+float rnd(uvec3 p){ return float(pcg(p.x + pcg(p.y + pcg(p.z)))) / 4294967295.0; }
+void main(){
+  vec2 d = uv - 0.5; vec2 da = d * vec2(res.x / res.y, 1.0); float r = length(da);
+  vec2 off = d * ca * (0.35 + 2.2 * r * r);
+  vec3 c = vec3(texture(acc, uv - off).r, texture(acc, uv).g, texture(acc, uv + off).b);
+  c = pow(max(c, 0.0), vec3(1.0 / 2.2));
+  c *= 1.0 - vig * smoothstep(0.35, 1.05, r);
+  uvec3 q = uvec3(uvec2(gl_FragCoord.xy), seed);
+  float n = (rnd(q) + rnd(q + uvec3(0u, 0u, 7919u)) - 1.0);
+  float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  c += n * grain * (1.0 - 0.55 * l);
+  o = vec4(c, 1.0);
+}`;
+function prog(fs) {
+  const p = gl.createProgram();
+  for (const [type, src] of [[gl.VERTEX_SHADER, VS], [gl.FRAGMENT_SHADER, fs]]) {
+    const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    gl.attachShader(p, s);
+  }
+  gl.bindAttribLocation(p, 0, 'p'); gl.linkProgram(p); if(!gl.getProgramParameter(p,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(p));return p;
+}
+const pAcc = prog(FS_ACC), pPost = prog(FS_POST);
+const vb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vb);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+const mkTex = (ifmt, fmt, type) => {
+  const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texImage2D(gl.TEXTURE_2D, 0, ifmt, PW, PH, 0, fmt, type, null);
+  for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+  return t;
+};
+const texScene = mkTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE);
+const texAcc = mkTex(gl.RGBA16F, gl.RGBA, gl.HALF_FLOAT);
+const fbo = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texAcc, 0);
+if(gl.checkFramebufferStatus(gl.FRAMEBUFFER)!==gl.FRAMEBUFFER_COMPLETE)throw new Error('Accumulation framebuffer incomplete');
+const halton = (i, b) => { let f = 1, r = 0; while (i > 0) { f /= b; r += f * (i % b); i = Math.floor(i / b); } return r; };
+
+let TF = 0;
+function drawScene(t, tf) {
+  const shot = shotAt(tf); TF = tf;
+  ctx.save();
+  const [sx, sy] = shake(t); ctx.translate(sx, sy);
+  SCENES[shot](ctx, t, tf);
+  ctx.restore();
+  ctx.globalAlpha = 1;
+  hud(ctx, t, tf, shot);
+}
+function renderFrame(tf, sub = SUB) {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo); gl.viewport(0, 0, PW, PH);
+  gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+  gl.useProgram(pAcc); gl.uniform1i(gl.getUniformLocation(pAcc, 'tex'), 0); gl.uniform1f(gl.getUniformLocation(pAcc, 'w'), 1 / sub);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+  for (let k = 0; k < sub; k++) {
+    const t = tf + ((k + 0.5) / sub - 0.5) * SHUTTER / FPS;
+    ctx.setTransform(SCALE, 0, 0, SCALE, (halton(k + 1, 2) - 0.5) * (sub > 1 ? 1 : 0), (halton(k + 1, 3) - 0.5) * (sub > 1 ? 1 : 0));
+    drawScene(t, tf);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, texScene);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, sc);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  }
+  gl.disable(gl.BLEND);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, PW, PH);
+  gl.useProgram(pPost);
+  gl.bindTexture(gl.TEXTURE_2D, texAcc);
+  gl.uniform1i(gl.getUniformLocation(pPost, 'acc'), 0);
+  gl.uniform1f(gl.getUniformLocation(pPost, 'ca'), caAt(tf));
+  gl.uniform1f(gl.getUniformLocation(pPost, 'vig'), 0.04);
+  gl.uniform1f(gl.getUniformLocation(pPost, 'grain'), 0.005);
+  gl.uniform1ui(gl.getUniformLocation(pPost, 'seed'), Math.round(tf * FPS) + 1);
+  gl.uniform2f(gl.getUniformLocation(pPost, 'res'), PW, PH);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+const pixels = new Uint8Array(PW * PH * 4);
+function readFrame() { gl.readPixels(0, 0, PW, PH, gl.RGBA, gl.UNSIGNED_BYTE, pixels); return pixels; }
+
+// ============================================================================================
+//  Sound. Synthesised offline from the same beat grid, so every hit lands on its frame.
+// ============================================================================================
+async function renderAudio() {
+  const SR = 48000, ac = new OfflineAudioContext(2, SR * DUR, SR), rng = mulberry32(11);
+  const noise = ac.createBuffer(2, SR * 3, SR);
+  for (let c = 0; c < 2; c++) { const d = noise.getChannelData(c); for (let i = 0; i < d.length; i++) d[i] = rng() * 2 - 1; }
+  const ir = ac.createBuffer(2, SR * 2.6, SR);
+  for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); let lp = 0; for (let i = 0; i < d.length; i++) { const x = rng() * 2 - 1; lp += (x - lp) * 0.35; d[i] = lp * Math.exp(-i / SR / 0.55) * (i < SR * 0.012 ? i / (SR * 0.012) : 1); } }
+  const master = ac.createGain(); master.gain.value = 0.7;
+  const comp = ac.createDynamicsCompressor(); comp.threshold.value = -14; comp.knee.value = 8; comp.ratio.value = 3.5; comp.attack.value = 0.005; comp.release.value = 0.14;
+  const sat = ac.createWaveShaper(); const curve = new Float32Array(2048); for (let i = 0; i < 2048; i++) { const x = i / 1023.5 - 1; curve[i] = Math.tanh(x * 1.4) / Math.tanh(1.4); } sat.curve = curve; sat.oversample = '4x';
+  master.connect(comp); comp.connect(sat); sat.connect(ac.destination);
+  const verb = ac.createConvolver(); verb.buffer = ir; const verbRet = ac.createGain(); verbRet.gain.value = 0.6; verb.connect(verbRet); verbRet.connect(master);
+  const music = ac.createGain(), pump = ac.createGain(), hpf = ac.createBiquadFilter();
+  hpf.type = 'highpass'; hpf.frequency.value = 20; hpf.Q.value = 0.7;
+  music.connect(pump); pump.connect(hpf); hpf.connect(master);
+  const drums = ac.createGain(); drums.connect(master);
+  const fx = ac.createGain(); fx.connect(master);
+
+  const N = (t, dur, dest) => { const s = ac.createBufferSource(); s.buffer = noise; s.start(t, rng() * 2, dur); s.connect(dest); return s; };
+  const G = (dest, v = 0) => { const g = ac.createGain(); g.gain.value = v; g.connect(dest); return g; };
+  const Fl = (dest, type, f, q = 0.7) => { const b = ac.createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = q; b.connect(dest); return b; };
+  const Pan = (dest, p) => { const s = ac.createStereoPanner(); s.pan.value = p; s.connect(dest); return s; };
+  const O = (t, type, f, dur, dest) => { const o = ac.createOscillator(); o.type = type; o.frequency.value = f; o.start(t); o.stop(t + dur); o.connect(dest); return o; };
+  const hit = (g, t, a, tau, att = 0.002) => { g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(a, t + att); g.gain.setTargetAtTime(0, t + att, tau); };
+  const send = (node, amt) => { const g = ac.createGain(); g.gain.value = amt; node.connect(g); g.connect(verb); };
+
+  function kick(t, a = 1) {
+    const g = G(drums); hit(g, t, a, 0.1, 0.001);
+    const o = O(t, 'sine', 160, 0.7, g); o.frequency.setValueAtTime(165, t); o.frequency.exponentialRampToValueAtTime(52, t + 0.06); o.frequency.exponentialRampToValueAtTime(41, t + 0.4);
+    const cg = G(drums); hit(cg, t, 0.22 * a, 0.004, 0.0005); N(t, 0.02, Fl(cg, 'highpass', 2600));
+  }
+  function clap(t, a = 0.42) {
+    const g = G(drums); const f = Fl(Fl(g, 'bandpass', 1350, 0.9), 'highpass', 500);
+    g.gain.setValueAtTime(0, t);
+    for (const d of [0, 0.011, 0.022]) { g.gain.setValueAtTime(a, t + d); g.gain.setTargetAtTime(0, t + d + 0.001, 0.004); }
+    g.gain.setValueAtTime(a, t + 0.03); g.gain.setTargetAtTime(0, t + 0.031, 0.055);
+    N(t, 0.4, f); send(g, 0.35);
+  }
+  function hat(t, a, open, pan) {
+    const g = G(Pan(drums, pan)); hit(g, t, a, open ? 0.055 : 0.011, 0.001);
+    N(t, open ? 0.4 : 0.08, Fl(Fl(g, 'highpass', 7500), 'peaking', 10500, 1));
+  }
+  function snare(t, a) {
+    const g = G(drums); hit(g, t, a, 0.045, 0.001); N(t, 0.25, Fl(g, 'bandpass', 1900, 0.6));
+    const b = G(drums); hit(b, t, a * 0.6, 0.03, 0.001); O(t, 'triangle', 190, 0.2, b);
+    send(g, 0.2);
+  }
+  function bass(t, f, dur, a = 0.3) {
+    const g = G(music); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(a, t + 0.004); g.gain.setValueAtTime(a, t + dur); g.gain.setTargetAtTime(0, t + dur, 0.02);
+    const lp = Fl(g, 'lowpass', 900, 5); lp.frequency.setValueAtTime(1100, t); lp.frequency.setTargetAtTime(170, t, 0.05);
+    O(t, 'sawtooth', f, dur + 0.2, lp); O(t, 'sine', f, dur + 0.2, g);
+  }
+  function stab(t, freqs, a = 0.1, tau = 0.12, cut = 2600) {
+    const g = G(music); hit(g, t, a, tau, 0.004); send(g, 0.45);
+    freqs.forEach((f, i) => {
+      const lp = Fl(Pan(g, (i / (freqs.length - 1) - 0.5) * 1.6), 'lowpass', cut, 1.2);
+      lp.frequency.setValueAtTime(cut, t); lp.frequency.setTargetAtTime(700, t, tau * 0.8);
+      for (const det of [-9, 9]) { const o = O(t, 'sawtooth', f, tau * 7, lp); o.detune.value = det; }
+    });
+  }
+  function tock(t, a, f = 1200) {
+    const g = G(fx); hit(g, t, a, 0.035, 0.0008); O(t, 'sine', f, 0.3, g);
+    const g2 = G(fx); hit(g2, t, a * 0.5, 0.012, 0.0005); O(t, 'sine', f * 2.76, 0.1, g2);
+    const g3 = G(fx); hit(g3, t, a * 0.3, 0.004, 0.0003); N(t, 0.03, Fl(g3, 'bandpass', f * 3, 1.5));
+    send(g, 0.25);
+  }
+  function whoosh(t0, t1, a = 0.3, f0 = 300, f1 = 6000) {
+    const p = ac.createStereoPanner(); p.connect(fx); p.pan.setValueAtTime(-0.6, t0); p.pan.linearRampToValueAtTime(0.6, t1);
+    const g = ac.createGain(); g.connect(p); g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(a, t1); g.gain.setTargetAtTime(0, t1, 0.04);
+    const bp = Fl(g, 'bandpass', f0, 1.4); bp.frequency.setValueAtTime(f0, t0); bp.frequency.exponentialRampToValueAtTime(f1, t1);
+    N(t0, t1 - t0 + 0.3, bp); send(g, 0.3);
+  }
+  function riser(t0, t1, a = 0.22) {
+    const g = G(fx); g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(a, t1); g.gain.setValueAtTime(0, t1 + 0.005);
+    const hp = Fl(g, 'highpass', 300); hp.frequency.setValueAtTime(300, t0); hp.frequency.exponentialRampToValueAtTime(7000, t1);
+    N(t0, t1 - t0 + 0.05, hp);
+    const lp = Fl(g, 'lowpass', 800, 3); lp.frequency.setValueAtTime(600, t0); lp.frequency.exponentialRampToValueAtTime(5000, t1);
+    for (const det of [-12, 12]) { const o = O(t0, 'sawtooth', 110, t1 - t0 + 0.05, G(lp, 0.35)); o.detune.value = det; o.frequency.setValueAtTime(110, t0); o.frequency.exponentialRampToValueAtTime(880, t1); }
+    send(g, 0.3);
+  }
+  function impact(t, a = 1) {
+    const g = G(fx); hit(g, t, a, 0.32, 0.001);
+    const o = O(t, 'sine', 90, 2, g); o.frequency.setValueAtTime(95, t); o.frequency.exponentialRampToValueAtTime(33, t + 0.6);
+    const n = G(fx); hit(n, t, a * 0.45, 0.22, 0.001);
+    const lp = Fl(n, 'lowpass', 6000); lp.frequency.setValueAtTime(7000, t); lp.frequency.setTargetAtTime(900, t, 0.12);
+    N(t, 1.5, lp); send(n, 0.9);
+    const c = G(fx); hit(c, t, a * 0.12, 0.6, 0.002); N(t, 2.5, Fl(c, 'highpass', 5500)); send(c, 0.6);
+  }
+  function bloop(t, f0, f1, a = 0.22) {
+    const g = G(fx); hit(g, t, a, 0.07, 0.002);
+    const o = O(t, 'sine', f0, 0.4, g); o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + 0.09);
+    send(g, 0.35);
+  }
+  function blip(t, f, a = 0.12, pan = 0) {
+    const g = G(Pan(fx, pan)); hit(g, t, a, 0.05, 0.001); O(t, 'square', f, 0.3, Fl(g, 'lowpass', 3200)); send(g, 0.4);
+  }
+  function air(t0, t1, a, f0, f1) {
+    const g = G(fx); g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(a, t0 + 0.04); g.gain.exponentialRampToValueAtTime(0.001, t1);
+    const bp = Fl(g, 'bandpass', f0, 1.2); bp.frequency.setValueAtTime(f0, t0); bp.frequency.exponentialRampToValueAtTime(f1, t1);
+    N(t0, t1 - t0 + 0.05, bp); send(g, 0.3);
+  }
+  function chirp(t, f0, f1, dur, a) {                                               // 8-bit square sweep, for pixel-art characters
+    const g = G(fx); hit(g, t, a, dur * 0.6, 0.002);
+    const o = O(t, 'square', f0, dur * 3, Fl(g, 'lowpass', 3500)); o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    send(g, 0.25);
+  }
+  function click(t, a = 0.12) { const g = G(fx); hit(g, t, a, 0.003, 0.0003); N(t, 0.02, Fl(g, 'highpass', 4000)); const s = G(fx); hit(s, t, a * 0.6, 0.006, 0.0003); O(t, 'sine', 2400, 0.05, s); }
+  function chime(t, f, a = 0.22) {
+    const g = G(fx); send(g, 0.8);
+    [[1, 1, 1.4], [2, 0.45, 0.9], [3.01, 0.22, 0.6], [4.16, 0.14, 0.4], [5.43, 0.06, 0.25]].forEach(([m, am, tau]) => { const gg = G(g); hit(gg, t, a * am, tau, 0.002); O(t, 'sine', f * m, 3, gg); });
+  }
+
+{{SCORE_JS}}
+  const buf = await ac.startRendering();
+  const n = buf.length, dv = new DataView(new ArrayBuffer(44 + n * 8));
+  const str = (o, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
+  str(0, 'RIFF'); dv.setUint32(4, 36 + n * 8, true); str(8, 'WAVE'); str(12, 'fmt ');
+  dv.setUint32(16, 16, true); dv.setUint16(20, 3, true); dv.setUint16(22, 2, true); dv.setUint32(24, SR, true);
+  dv.setUint32(28, SR * 8, true); dv.setUint16(32, 8, true); dv.setUint16(34, 32, true); str(36, 'data'); dv.setUint32(40, n * 8, true);
+  const L = buf.getChannelData(0), R = buf.getChannelData(1);
+  for (let i = 0; i < n; i++) { dv.setFloat32(44 + i * 8, L[i], true); dv.setFloat32(48 + i * 8, R[i], true); }
+  return dv.buffer;
+}
+
+// ============================================================================================
+//  Modes
+// ============================================================================================
+const post=async(path,body)=>{const url=new URL(path,location.href);url.searchParams.set('token',Q.get('token')||'');const r=await fetch(url,{method:'POST',body});if(!r.ok)throw new Error('Capture request failed: '+r.status);};
+window.addEventListener('error', e => post('/error', String(e.message) + ' @' + e.lineno));
+window.addEventListener('unhandledrejection', e => post('/error', String(e.reason && e.reason.stack || e.reason)));
+(async () => {
+  await Promise.all([document.fonts.load(F(500,14,MONO)),document.fonts.load(F(900,100,SANS))]);await document.fonts.ready; if(typeof prepareTextTargets==='function')prepareTextTargets();
+  await post('/hello',JSON.stringify({width:PW,height:PH,fps:FPS,duration:DUR}));
+  if (MODE === 'still') {
+    for (const t of (Q.get('ts') || '0').split(',')) { renderFrame(+t); await post('/still?t=' + t, readFrame()); }
+    await post('/done');
+  } else if (MODE === 'render') {
+    if(BRAND.audio!==false)await post('/audio', await renderAudio());
+    const n = Math.round(DUR * FPS);
+    for (let i = 0; i < n; i++) { renderFrame(i / FPS); await post('/frame?i=' + i, readFrame()); }
+    await post('/done');
+  } else {
+    const t0 = performance.now();
+    const loop = () => { const t = ((performance.now() - t0) / 1000) % DUR; renderFrame(Math.floor(t * FPS) / FPS, 2); requestAnimationFrame(loop); };
+    loop();
+  }
+})();
+</script>
+</body>
+</html>

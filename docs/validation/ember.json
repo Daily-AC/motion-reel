@@ -1,0 +1,72 @@
+{
+  "file": "ember-launch.mp4",
+  "expected": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 60,
+    "duration": 15,
+    "frames": 900,
+    "samples": 16,
+    "audio": true,
+    "encodedAudio": {
+      "input_i": "-14.00",
+      "input_tp": "-3.67",
+      "input_lra": "2.60",
+      "input_thresh": "-24.10",
+      "output_i": "-14.33",
+      "output_tp": "-4.16",
+      "output_lra": "0.90",
+      "output_thresh": "-24.39",
+      "normalization_type": "dynamic",
+      "target_offset": "0.33"
+    }
+  },
+  "decoded_video_frames": 900,
+  "errors": [],
+  "warnings": [],
+  "visual_review_required": true,
+  "listening_review": "not performed by this script",
+  "audio": {
+    "input_i": -14.0,
+    "input_tp": -3.67,
+    "input_lra": 2.6
+  },
+  "first_last_frames": [
+    {
+      "frame": 0,
+      "mean": 25.657,
+      "std": 22.174
+    },
+    {
+      "frame": 899,
+      "mean": 20.378,
+      "std": 28.733
+    }
+  ],
+  "flat_intervals": [
+    {
+      "start_frame": 439,
+      "end_frame_exclusive": 450,
+      "start_seconds": 7.316666666666666,
+      "duration_seconds": 0.18333333333333332
+    },
+    {
+      "start_frame": 591,
+      "end_frame_exclusive": 595,
+      "start_seconds": 9.85,
+      "duration_seconds": 0.06666666666666667
+    },
+    {
+      "start_frame": 629,
+      "end_frame_exclusive": 642,
+      "start_seconds": 10.483333333333333,
+      "duration_seconds": 0.21666666666666667
+    }
+  ],
+  "near_black_intervals": [],
+  "mux_sync": {
+    "offset_ms": 0,
+    "envelope_correlation": 0.9999882897455673
+  },
+  "technical_ok": true
+}

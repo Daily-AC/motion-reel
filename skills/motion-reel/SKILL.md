@@ -1,0 +1,79 @@
+---
+name: motion-reel
+description: Direct and render polished short motion-graphics reels, brand films, and kinetic showcases in code. Use for a punchy product or identity reel, or when existing animation feels static, sparse, incoherent, or unfinished. Includes deterministic rendering and synthesized sound. Not a live-action generator or long-form narrated-video workflow.
+---
+
+# Motion Reel
+
+Deliver a finished film with a coherent identity, legible motion and a tested local rebuild. Use the included engine to remove rendering friction; direct the film for the user's subject rather than merely renaming its demo.
+
+## Start from the brief
+
+For an existing film, read its sources and accepted decisions, then change the requested dimension. Preserve approved motion when feedback concerns visual density; preserve the accepted logo when changing atmosphere. Keep previous delivered renders.
+
+For a new film, infer sensible defaults and state the decisions that matter. Ask only about missing information that changes the result and cannot be inferred. A request for the finished video authorizes local implementation, previews and rendering; it does not authorize paid generation or publication. Do not insert mandatory approval gates when the user delegated direction.
+
+Choose the audience, one message, duration, aspect ratio, identity and audio role. Record a short treatment. At 15 seconds, let behavior demonstrate the capability instead of squeezing in a narration-sized explanation.
+
+## Direct before decorating
+
+Read [creative-direction.md](references/creative-direction.md) for substantial creation or revision. Make four decisions:
+
+1. **A visual premise.** Name what transforms and why. “A thought becomes a constructed world” yields better decisions than “futuristic and epic.”
+2. **A handoff.** For each cut, name the shape, trajectory, color or sound carried forward. Match actual boundary positions and scale; shared geometry is more reliable than similar drawings.
+3. **A density rhythm.** Assign dense passages and quiet recognition moments. Sparse scenes may need their environment to respond to the subject, not particles everywhere.
+4. **A return.** Let an opening element earn its place in the close. The first frame should already communicate; the last hold should stay readable.
+
+If ideation stalls, run `scripts/creative_seed.py`. Its random groups are associations, not instructions or quality scores. Select only associations that serve the film and record their visible consequences.
+
+## Build from the working starter
+
+Resolve bundled paths from this skill directory, not a hardcoded agent home or the current project.
+
+```sh
+python3 scripts/new_project.py /path/to/new-film --brand NOVA
+cd /path/to/new-film
+node render.mjs doctor
+python3 build.py
+node --check check.js
+node render.mjs stills 0,0.8,4.6,8.6,10.6,14.3 --samples 8
+```
+
+The initializer copies a self-contained, editable 15-second example, fonts, renderer and verification tools. No API key or video-generation service is required. Read [production.md](references/production.md) before changing the project contract or diagnosing rendering.
+
+- Edit `project.json` for identity, palette and timing; author shots in `scenes.js` and sound in `score.js`. For a different shot count/order, also update `SCENES`, `SHOT`, `LABELS`, `HITS`, `HUD_TONE` and `hud` in `engine.html`; see the production guide.
+- Change the demo's visual argument and relevant shot behavior for a new subject. Eight shots, blue and 128 BPM are examples, not requirements.
+- Use actual logo assets for an existing brand. Preserve silhouette and internal spacing while adding depth. Never present the starter's original generic symbol as an official logo.
+- Keep scene state a pure function of time. Seed randomness at initialization. Do not integrate from prior frames or fetch assets during capture.
+- Select the shot from the frame-center time. All shutter samples of that frame belong to that shot. The compositor averages samples in linear light using RGBA16F.
+- Share impact timing between music and movement. Use a sonic motif sparingly. Loudness checks cannot judge musical taste.
+- Recompose for another aspect ratio; a landscape crop is not an authored portrait cut.
+
+## Iterate on the actual defect
+
+| Feedback | Inspect | Useful change |
+|---|---|---|
+| Weak motion | Full action at 15–20 fps, not only its midpoint | Preparation, fast release, overshoot, scale change or spatial reconstruction |
+| Empty frame | How the surroundings respond to the subject | Motivated light, shadow, far wire echo, construction plane or linked secondary pieces |
+| Incoherent film | Palette, material, repeated motifs, cut endpoints | Carry one family of shapes/light/sound and the real brand identity |
+| Clutter | Competing focal points and illegible copy | Remove the least meaningful layer; keep type and the close clear |
+| Wrong-looking effect | Moving strip and the effect's source | Repair the relationship or delete the effect; a fake reflection can be worse than none |
+
+Read [case-study.md](references/case-study.md) for demonstrated revisions and rejected approaches. Do not turn one successful film into a fixed recipe for every subject.
+
+## Render, inspect, deliver
+
+```sh
+node render.mjs render --out out/reel.mp4 --samples 16
+python3 verify.py out/reel.mp4
+uv run --with pillow python review.py out/reel.mp4 --times 0,0.8,4.6,8.6,10.6,14.98
+uv run --with pillow python review.py out/reel.mp4 --strip 7.65:9.20:20
+```
+
+Read [review.md](references/review.md) for encoded-frame checks, motion strips, audio evidence and review handoffs. Use `--scale 2` for a native 4K master when needed, after the direction survives review.
+
+Separate **technical validity**, **visual acceptance**, and **audience response**. None proves the others. Do not claim aesthetic quality from frame counts or an agent's score.
+
+For a substantial film, use an independent reviewing agent when available and allowed by the host. Give it the brief and fixed encoded artifact, not the desired verdict. Otherwise perform an explicit second review and disclose that it was not independent. Fix specific findings and recheck changed intervals rather than endlessly rescanning unchanged work.
+
+Deliver the playable MP4, source/rebuild command and a useful poster. Report actual duration, material limits, and whether sound was only measured or also heard. Publish within the user's authorization. Read [credits-and-assets.md](references/credits-and-assets.md) before sharing third-party assets.

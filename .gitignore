@@ -1,0 +1,10 @@
+.DS_Store
+__pycache__/
+*.pyc
+.venv/
+node_modules/
+work/
+*.mp4
+*.wav
+*.render.json
+*.verify.json

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Motion Reel"
+  short_description: "Direct and render polished code-driven motion reels"
+  default_prompt: "Use $motion-reel to create a polished short motion reel from my brief."

@@ -1,0 +1,60 @@
+{
+  "file": "nova.mp4",
+  "expected": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 60,
+    "duration": 15,
+    "frames": 900,
+    "samples": 16,
+    "audio": true,
+    "encodedAudio": {
+      "input_i": "-14.05",
+      "input_tp": "-3.78",
+      "input_lra": "2.70",
+      "input_thresh": "-24.60",
+      "output_i": "-14.11",
+      "output_tp": "-3.82",
+      "output_lra": "0.70",
+      "output_thresh": "-24.41",
+      "normalization_type": "dynamic",
+      "target_offset": "0.11"
+    }
+  },
+  "decoded_video_frames": 900,
+  "errors": [],
+  "warnings": [],
+  "visual_review_required": true,
+  "listening_review": "not performed by this script",
+  "audio": {
+    "input_i": -14.05,
+    "input_tp": -3.78,
+    "input_lra": 2.7
+  },
+  "first_last_frames": [
+    {
+      "frame": 0,
+      "mean": 57.743,
+      "std": 64.299
+    },
+    {
+      "frame": 899,
+      "mean": 215.823,
+      "std": 59.618
+    }
+  ],
+  "flat_intervals": [
+    {
+      "start_frame": 110,
+      "end_frame_exclusive": 113,
+      "start_seconds": 1.8333333333333333,
+      "duration_seconds": 0.05
+    }
+  ],
+  "near_black_intervals": [],
+  "mux_sync": {
+    "offset_ms": 0,
+    "envelope_correlation": 0.9999338349041594
+  },
+  "technical_ok": true
+}

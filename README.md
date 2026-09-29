@@ -1,0 +1,64 @@
+# Motion Reel
+
+**A reusable agent skill for directing, drawing and scoring short motion reels in code.**
+
+[中文](README.zh-CN.md) · [Skill](skills/motion-reel/SKILL.md) · [Creative method](skills/motion-reel/references/creative-direction.md) · [Case study](skills/motion-reel/references/case-study.md)
+
+[![Codex case-study poster](docs/codex-poster.jpg)](https://github.com/Daily-AC/motion-reel/releases/download/v0.1.0/codex-showcase.mp4)
+
+[▶ Watch the15-second Codex case study](https://github.com/Daily-AC/motion-reel/releases/download/v0.1.0/codex-showcase.mp4)
+
+This package came out of an iterated film, not a prompt collection. The initial cut was technically valid but too static; the next had sufficient movement but felt sparse. The accepted result kept its motion and gained a coherent palette, spatial response and selective detail. A flat reflection was removed after it failed in motion. Those decisions are part of the skill.
+
+## Install
+
+```sh
+npx skills add Daily-AC/motion-reel --skill motion-reel -g
+```
+
+Or clone this repository and ask an agent to read `skills/motion-reel/SKILL.md`. The main instructions use ordinary files and local commands; `agents/openai.yaml` adds optional Codex UI metadata. No proprietary agent API is required.
+
+Example request:
+
+> Use $motion-reel to make a15-second launch film for a fictional precision camera brand. Warm amber, ivory and near-black. The message is “Find your focus.” Give it original instrumental sound and an actual MP4.
+
+## What is included
+
+- A concise directing skill, with separate guides for composition, production and review.
+- An editable15-second starter with3D shapes, kinetic type, particles, spatial interfaces and original synthesized audio.
+- Linear-light temporal sampling, a shared beat grid, seeded geometry and a deterministic frame-capture pipeline.
+- Portable project scaffolding, dependency checks, encoded-output verification and motion-strip generation.
+- A random-string association tool, used as a source of ideas rather than a quality metric.
+- Licensed bundled fonts, an original generic symbol, and a separately credited Codex example.
+
+## Try the starter without an agent
+
+Requirements: Node.js22+, Python3.10+, FFmpeg/ffprobe and Chrome/Chromium with WebGL2 float targets. Set `CHROME_PATH` if automatic discovery fails. Pillow is only needed for contact sheets.
+
+```sh
+git clone https://github.com/Daily-AC/motion-reel.git
+cd motion-reel
+python3 skills/motion-reel/scripts/new_project.py ./work/nova --brand NOVA
+cd work/nova
+node render.mjs doctor
+node render.mjs stills 0,0.8,4.6,8.6,10.6,14.3 --samples 8
+node render.mjs render --out out/nova.mp4 --samples 16
+python3 verify.py out/nova.mp4
+uv run --with pillow python review.py out/nova.mp4 --strip 7.65:9.20:20
+```
+
+Use `--scale 2` for a native4K master. `node render.mjs preview` serves a silent interactive preview; stop it when finished. Generated projects are self-contained and contain the source, fonts and tools needed to rebuild.
+
+The starter is a vocabulary, not an eight-shot mandate. Change the subject's argument, relevant behavior, identity and handoffs. Recompose for portrait. Merely changing a name or adding more particles is not the method.
+
+## Evidence and limits
+
+See [validation](docs/validation.md) for the exact real runs performed for this release. macOS/Chrome is the tested reference environment. Linux/Windows browser discovery exists, but is not presented as a tested rendering guarantee. CJK and other writing systems need suitable fonts and fresh layout checks.
+
+Technical validity, visual acceptance and audience response are separate. The included film received positive feedback reported by its creator; this does not establish that every agent or prompt will produce equivalent taste. Sound was measured for loudness, peaks and timing; the original case did not receive subjective listening review.
+
+## License and credits
+
+Code and original guidance: [MIT](LICENSE). Fonts and third-party material retain their own licenses; see [THIRD_PARTY.md](THIRD_PARTY.md). Codex/OpenAI marks in the case study are not covered as original toolkit branding and do not imply endorsement.
+
+Created by Daily-AC with Claude and Codex. The rendering foundation came from an earlier local code-motion workflow; this skill distills the later film's art direction, review and portability work. [Lemo-Opuscar](https://github.com/lemomo-ai/lemo-opuscar) was related inspiration; its39-style catalog is not bundled here.

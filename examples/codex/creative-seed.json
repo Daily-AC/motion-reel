@@ -1,0 +1,46 @@
+{
+  "seed": "NF3SQU86SFW7L6L2NXKGDXZX47SA8ZFUUVXXB7C6ZE6TVGN3",
+  "grouping": "alternating lengths + next fragment reversed; SHA-256 vocabulary lookup",
+  "ideas": [
+    {
+      "fragment": "NF3",
+      "trigger": "轨道 × 点亮"
+    },
+    {
+      "fragment": "SQU86",
+      "trigger": "星图 × 呼应"
+    },
+    {
+      "fragment": "SFW7",
+      "trigger": "建筑 × 生长"
+    },
+    {
+      "fragment": "L6L2NXK",
+      "trigger": "建筑 × 分叉"
+    },
+    {
+      "fragment": "GDX",
+      "trigger": "粒子 × 编织"
+    },
+    {
+      "fragment": "ZX47SA",
+      "trigger": "丝线 × 收束"
+    },
+    {
+      "fragment": "8ZFUU",
+      "trigger": "透镜 × 折叠"
+    },
+    {
+      "fragment": "VXXB",
+      "trigger": "粒子 × 穿透"
+    },
+    {
+      "fragment": "7C6ZE6",
+      "trigger": "丝线 × 折叠"
+    },
+    {
+      "fragment": "TVGN3",
+      "trigger": "建筑 × 点亮"
+    }
+  ]
+}

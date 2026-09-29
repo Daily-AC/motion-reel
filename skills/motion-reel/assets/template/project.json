@@ -1,0 +1,22 @@
+{
+  "name": "NOVA",
+  "tagline": "Make the extraordinary.",
+  "opening": [
+    "One idea.",
+    "A world of possibilities."
+  ],
+  "eyebrow": "BEYOND THE PROMPT",
+  "credit": "DESIGNED AND RENDERED IN CODE.",
+  "width": 1920,
+  "height": 1080,
+  "fps": 60,
+  "bpm": 128,
+  "bars": 8,
+  "audio": true,
+  "seed": "NOVA-ORBIT-THREAD-2026",
+  "palette": {
+    "ink": "#0D1120",
+    "paper": "#F1F3F9",
+    "accent": "#8AA3FF"
+  }
+}
