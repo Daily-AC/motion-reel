@@ -11,8 +11,32 @@
   "height": 1080,
   "fps": 60,
   "bpm": 128,
-  "bars": 8,
-  "audio": true,
+  "sceneBpm": 128,
+  "shots": [
+    {"scene": "ignition", "beats": 4, "label": "IGNITION", "hit": 10, "hud": "paper"},
+    {"scene": "thought", "beats": 4, "label": "THOUGHT", "hit": 10, "hud": "ink",
+      "copy": {"word": "CODE", "portal": 1, "left": "THINK IT.", "right": "THEN MAKE IT."}},
+    {"scene": "transform", "beats": 4, "label": "TRANSFORM", "hit": 10, "hud": "paper",
+      "copy": {"title": "TRANSFORM"}},
+    {"scene": "possibility", "beats": 4, "label": "POSSIBILITY", "hit": 14, "hud": "paper",
+      "copy": {"target": "BUILD", "caption": "ONE IDEA. MANY POSSIBILITIES."}},
+    {"scene": "build", "beats": 4, "label": "BUILD", "hit": 11, "hud": "paper",
+      "copy": {"top": "FROM A THOUGHT.", "bottom": "TO SOMETHING REAL."}},
+    {"scene": "create", "beats": 4, "label": "CREATE", "hit": 12, "hud": "ink",
+      "copy": {"backdrop": "MAKE.", "panels": [
+        {"title": "FORM / STUDIO", "headline": ["Make it", "extraordinary."], "button": "EXPLORE", "footer": "A NEW POSSIBILITY."},
+        {"title": "BUILD / TERMINAL", "code": ["const possibility = imagine();", "", "for (const idea of possibility) {", "  await design(idea);", "  await build(idea);", "  await test(idea);", "}", "", "return makeItReal();"]},
+        {"title": "MOTION / ENGINE", "headline": ["Ideas in motion."]}
+      ]}},
+    {"scene": "momentum", "beats": 4, "label": "MOMENTUM", "hit": 15, "hud": "paper",
+      "copy": {"words": ["THINK", "BUILD", "BREAK", "CREATE"]}},
+    {"scene": "signature", "beats": 4, "label": "SIGNATURE", "hit": 12, "hud": null}
+  ],
+  "sound": {
+    "synth": true,
+    "music": null,
+    "library": {}
+  },
   "seed": "NOVA-ORBIT-THREAD-2026",
   "palette": {
     "ink": "#0D1120",

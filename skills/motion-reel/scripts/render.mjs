@@ -27,16 +27,16 @@ const CHROME=browserPath();run('ffmpeg',['-version']);run('ffprobe',['-version']
 if(mode==='doctor'){console.log(JSON.stringify({ok:true,node:process.versions.node,platform:process.platform,browser:CHROME,ffmpeg:run('ffmpeg',['-version']).split('\n')[0],note:'This checks dependencies. A real still must validate WebGL2 and float targets.'},null,2));process.exit(0)}
 if(!['render','stills','preview'].includes(mode))throw new Error('Use doctor, stills, render or preview');
 run(process.env.PYTHON||'python3',[join(ROOT,'build.py')]);run(process.execPath,['--check',join(ROOT,'check.js')]);
-const cfg=JSON.parse(readFileSync(join(ROOT,'project.json'),'utf8'));
-const scale=Number(opts.scale||1),samples=Number(opts.samples||16),duration=cfg.bars*4*60/cfg.bpm,fps=cfg.fps;
+const cfg=JSON.parse(readFileSync(join(ROOT,'project.json'),'utf8')),TL=JSON.parse(readFileSync(join(ROOT,'timeline.json'),'utf8'));
+const scale=Number(opts.scale||1),samples=Number(opts.samples||16),duration=TL.duration,fps=cfg.fps;
 if(!Number.isInteger(scale)||scale<1||scale>4||!Number.isInteger(samples)||samples<1||samples>64)throw new Error('scale must be1–4; samples1–64');
-const W=cfg.width*scale,H=cfg.height*scale,frameBytes=W*H*4,expectedFrames=Math.round(duration*fps);
+const W=cfg.width*scale,H=cfg.height*scale,frameBytes=W*H*4,expectedFrames=TL.frames;
 const output=resolve(ROOT,opts.out||'out/reel.mp4');
 if(!output.toLowerCase().endsWith('.mp4'))throw new Error('Output must end in .mp4');
 if(mode==='stills'){const ts=(positionals[0]||'0').split(',').map(Number);if(ts.length>240||ts.some(t=>!Number.isFinite(t)||t<0||t>=duration))throw new Error('Use1–240 still times within the film duration');}
 mkdirSync(dirname(output),{recursive:true});mkdirSync(join(ROOT,'review/stills'),{recursive:true});
 const temp=mkdtempSync(join(tmpdir(),'motion-reel-')),profile=join(temp,'profile'),token=randomBytes(20).toString('hex');
-const silent=join(temp,'silent.mp4'),rawAudio=join(temp,'audio.wav'),normAudio=join(temp,'normalized.wav');
+const silent=join(temp,'silent.mp4'),rawAudio=join(temp,'audio.wav'),mixedAudio=join(temp,'mixed.wav'),normAudio=join(temp,'normalized.wav');
 let chrome,encoder,encoderDone,server,closing=false,nextFrame=0,lastActivity=Date.now(),watchdog,encodedLevels;
 const tempName=(s)=>s.replace(/[^a-z0-9_.-]/gi,'_');
 function cleanup(){if(closing)return;closing=true;clearInterval(watchdog);chrome?.kill('SIGTERM');if(encoder&&!encoder.killed)encoder.kill('SIGTERM');server?.close();try{rmSync(temp,{recursive:true,force:true,maxRetries:5,retryDelay:100})}catch{}}
@@ -48,11 +48,26 @@ function startEncoder(){
  encoder.stdin.on('error',fail);encoder.on('error',fail);encoderDone=once(encoder,'close');
 }
 function levels(file){const r=spawnSync('ffmpeg',['-hide_banner','-i',file,'-map','0:a','-af','loudnorm=I=-14:TP=-1:LRA=11:print_format=json','-f','null','-'],{encoding:'utf8'});if(r.status!==0)throw new Error(r.stderr);const s=r.stderr;return JSON.parse(s.slice(s.lastIndexOf('{'),s.lastIndexOf('}')+1));}
+// The page posts only synthesized audio. Music and sound-effect files are placed here, sample-accurately, from timeline.json.
+function mixSoundtrack(){
+ const s=TL.sound,args=[],chains=[],fmt='aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo';
+ if(s.synth&&!existsSync(rawAudio))throw new Error('Expected synthesized soundtrack was not posted');
+ if(s.synth&&!s.music&&!s.sfx.length)return rawAudio;
+ const add=(file,filters)=>{const i=chains.length;args.push('-i',file);chains.push(`[${i}:a]${fmt},${filters}[a${i}]`)};
+ if(s.synth)add(rawAudio,'anull');
+ if(s.music){const fade=s.music.fadeOut??0.5;add(s.music.path,`atrim=start=${s.music.start||0}:duration=${duration},asetpts=PTS-STARTPTS,volume=${s.music.gain||0}dB`+(fade>0?`,afade=t=out:st=${Math.max(0,duration-fade)}:d=${fade}`:''))}
+ // A cue aligns the file's loudest moment (lead seconds in) to its beat; a whoosh swells into the cut.
+ for(const c of s.sfx){const at=c.t-c.lead;add(c.path,`atrim=start=${Math.max(0,-at)},asetpts=PTS-STARTPTS,volume=${c.gain}dB,adelay=delays=${Math.round(Math.max(0,at)*48000)}S:all=1`)}
+ const graph=chains.join(';')+';'+chains.map((_,i)=>`[a${i}]`).join('')+`amix=inputs=${chains.length}:normalize=0:duration=longest,apad=whole_dur=${duration},atrim=end=${duration}[mix]`;
+ run('ffmpeg',['-v','error','-y',...args,'-filter_complex',graph,'-map','[mix]','-c:a','pcm_f32le','-ar','48000',mixedAudio]);
+ return mixedAudio;
+}
 function finishFilm(){
- if(cfg.audio!==false){
-  if(!existsSync(rawAudio))throw new Error('Expected soundtrack was not posted');
-  const m=levels(rawAudio),af=`loudnorm=I=-14:TP=-1:LRA=11:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true,aresample=48000`;
-  run('ffmpeg',['-v','error','-y','-i',rawAudio,'-af',af,'-c:a','pcm_s24le',normAudio]);
+ const sound=TL.sound,hasSound=sound.synth||!!sound.music||sound.sfx.length>0;
+ if(hasSound){
+  const mixed=mixSoundtrack();
+  const m=levels(mixed),af=`loudnorm=I=-14:TP=-1:LRA=11:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true,aresample=48000`;
+  run('ffmpeg',['-v','error','-y','-i',mixed,'-af',af,'-c:a','pcm_s24le',normAudio]);
   let trim=0;
   for(let attempt=0;attempt<3;attempt++){
    run('ffmpeg',['-v','error','-y','-i',silent,'-i',normAudio,'-map','0:v','-map','1:a','-c:v','copy','-bsf:v','h264_metadata=colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1','-af',`volume=${trim}dB`,'-c:a','aac','-b:a','256k','-t',String(duration),'-movflags','+faststart',output]);
@@ -60,10 +75,14 @@ function finishFilm(){
    trim+=-1.3-Number(encodedLevels.input_tp);if(attempt===2)throw new Error('Encoded true peak remains above target');
   }
   // Retain a portable source for independent mux-timing checks.
-  run('ffmpeg',['-v','error','-y','-i',rawAudio,'-c:a','pcm_s24le',output.replace(/\.mp4$/i,'.source.wav')]);
+  run('ffmpeg',['-v','error','-y','-i',mixed,'-c:a','pcm_s24le',output.replace(/\.mp4$/i,'.source.wav')]);
  }else run('ffmpeg',['-v','error','-y','-i',silent,'-c:v','copy','-an','-movflags','+faststart',output]);
  run('ffmpeg',['-v','error','-y','-ss',String(Math.max(0,duration-.30)),'-i',output,'-frames:v','1','-vf','scale=1920:-2',output.replace(/\.mp4$/i,'.poster.jpg')]);
- writeFileSync(output.replace(/\.mp4$/i,'.render.json'),JSON.stringify({width:W,height:H,fps,duration,frames:nextFrame,samples,audio:cfg.audio!==false,encodedAudio:encodedLevels||null},null,2));
+ // Cue list and asset ledger travel with the film for verify.py / review.py and credits.
+ const cues=[...TL.shots.map(s=>({t:s.start,kind:'cut',shot:s.id,label:s.label,hit:s.hit})),...sound.sfx.map(c=>({t:c.t,kind:'sfx',shot:c.shot,name:c.name}))].sort((a,b)=>a.t-b.t);
+ const library=cfg.sound?.library||{},music=cfg.sound?.music;
+ const assets=[...(music?[{role:'music',file:music.file,start:music.start||0,source:music.source,license:music.license}]:[]),...[...new Set(sound.sfx.map(c=>c.name))].map(n=>({role:'sfx',name:n,file:library[n].file,source:library[n].source,license:library[n].license}))];
+ writeFileSync(output.replace(/\.mp4$/i,'.render.json'),JSON.stringify({width:W,height:H,fps,duration,frames:nextFrame,samples,audio:hasSound,synth:sound.synth,bpm:cfg.bpm,spb:TL.spb,maxCutLagSeconds:TL.maxCutLagSeconds,cues,assets,encodedAudio:encodedLevels||null},null,2));
  console.log(`Rendered ${output} (${duration.toFixed(3)}s / ${nextFrame} frames)`);
 }
 server=http.createServer(async(req,res)=>{
@@ -72,7 +91,8 @@ server=http.createServer(async(req,res)=>{
   if(req.method==='GET'){
    const file=resolve(ROOT,'.'+decodeURIComponent(url.pathname==='/'?'/reel.html':url.pathname));
    if(!file.startsWith(ROOT+sep)){res.writeHead(403).end();return}
-   const mime=file.endsWith('.html')?'text/html; charset=utf-8':file.endsWith('.js')?'text/javascript':file.endsWith('.woff2')?'font/woff2':file.endsWith('.ttf')?'font/ttf':'application/octet-stream';
+   const MIME={'.html':'text/html; charset=utf-8','.js':'text/javascript','.json':'application/json','.woff2':'font/woff2','.ttf':'font/ttf','.otf':'font/otf','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.gif':'image/gif','.svg':'image/svg+xml'};
+   const mime=MIME[file.slice(file.lastIndexOf('.')).toLowerCase()]||'application/octet-stream';
    try{res.setHeader('Content-Type',mime);res.end(readFileSync(file))}catch{res.writeHead(404).end()}return;
   }
   if(req.method!=='POST'||url.searchParams.get('token')!==token){res.writeHead(403).end();return}

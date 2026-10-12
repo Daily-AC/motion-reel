@@ -2,6 +2,8 @@
 
 Use user-provided or appropriately licensed assets. Keep a small asset ledger with the source, license and actual use. Brand fidelity is a design requirement; brand ownership is separate from the license of this toolkit.
 
+Music and sound-effect files carry their ledger in `project.json` (`source` and `license` on `sound.music` and every `sound.library` entry); `build.py` refuses audio without both, and the render metadata copies the ledger next to the film. Stock libraries usually permit use inside a film but forbid redistributing the files themselves, so keep them in the film project and out of this toolkit and any public repository. A library that only credits a whole collection (“from Pixabay”) without per-file origin cannot be traced; record that limitation in the ledger.
+
 The bundled generic symbol is original and is not an official logo for any existing company. For a known brand, replace it with verified assets. A bevel or material change should not alter the logo's essential outline or negative space.
 
 Inter Variable and JetBrains Mono retain their SIL Open Font License notices in `assets/fonts/`. Do not copy proprietary system fonts into a public package. A film rendered with locally installed system fonts is different from redistributing those font files.

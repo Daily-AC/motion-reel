@@ -1,6 +1,6 @@
 ---
 name: motion-reel
-description: Direct and render polished short motion-graphics reels, brand films, and kinetic showcases in code. Use for a punchy product or identity reel, or when existing animation feels static, sparse, incoherent, or unfinished. Includes deterministic rendering and synthesized sound. Not a live-action generator or long-form narrated-video workflow.
+description: Direct and render polished short motion-graphics reels, brand films, kinetic showcases and short explainers in code. Use for a punchy product or identity reel; an explainer of a flow, a number change or a new feature built from a project's real content; cutting a reel to a licensed music track; or when existing animation feels static, sparse, incoherent, or unfinished. Includes deterministic rendering, synthesized or licensed sound with measured sync, and source-checked on-screen numbers. Not a live-action generator or long-form narrated-video workflow.
 ---
 
 # Motion Reel
@@ -14,6 +14,8 @@ For an existing film, read its sources and accepted decisions, then change the r
 For a new film, infer sensible defaults and state the decisions that matter. Ask only about missing information that changes the result and cannot be inferred. A request for the finished video authorizes local implementation, previews and rendering; it does not authorize paid generation or publication. Do not insert mandatory approval gates when the user delegated direction.
 
 Choose the audience, one message, duration, aspect ratio, identity and audio role. Record a short treatment. At 15 seconds, let behavior demonstrate the capability instead of squeezing in a narration-sized explanation.
+
+For an explainer whose subject the user has not chosen (“find what in this project is worth animating”), read [explainer.md](references/explainer.md): mine the three kinds of material, propose ranked storyboards built only from real content, and let the user pick; the subject is theirs to choose. When the user names the subject, build it.
 
 ## Direct before decorating
 
@@ -41,12 +43,13 @@ node render.mjs stills 0,0.8,4.6,8.6,10.6,14.3 --samples 8
 
 The initializer copies a self-contained, editable 15-second example, fonts, renderer and verification tools. No API key or video-generation service is required. Read [production.md](references/production.md) before changing the project contract or diagnosing rendering.
 
-- Edit `project.json` for identity, palette and timing; author shots in `scenes.js` and sound in `score.js`. For a different shot count/order, also update `SCENES`, `SHOT`, `LABELS`, `HITS`, `HUD_TONE` and `hud` in `engine.html`; see the production guide.
+- `project.json` is the single source for copy, shot order, shot length (`beats`), cut impacts (`hit`), HUD labels and sound. `build.py` derives every time into `timeline.json`; a new shot list needs no engine edits. Author scenes in `scenes.js` as `draw(g, u, t, shot)` registered in `SCENE_LIBRARY`, and the synthesized score in `score.js` with cues as `SHOT('id')`. “Slow down the second shot” or “change this word” is a one-field edit in project.json.
 - Change the demo's visual argument and relevant shot behavior for a new subject. Eight shots, blue and 128 BPM are examples, not requirements.
 - Use actual logo assets for an existing brand. Preserve silhouette and internal spacing while adding depth. Never present the starter's original generic symbol as an official logo.
 - Keep scene state a pure function of time. Seed randomness at initialization. Do not integrate from prior frames or fetch assets during capture.
 - Select the shot from the frame-center time. All shutter samples of that frame belong to that shot. The compositor averages samples in linear light using RGBA16F.
-- Share impact timing between music and movement. Use a sonic motif sparingly. Loudness checks cannot judge musical taste.
+- Share impact timing between sound and movement. Use a sonic motif sparingly. Loudness checks cannot judge musical taste.
+- For a licensed track, read [music-and-sound.md](references/music-and-sound.md). `beats.py` measures the grid against the track's kicks and writes `bpm` and `sound.music`; sound effects are ledgered files in `sound.library`. Look at the beat plot before trusting the grid.
 - Recompose for another aspect ratio; a landscape crop is not an authored portrait cut.
 
 ## Iterate on the actual defect
@@ -68,12 +71,13 @@ node render.mjs render --out out/reel.mp4 --samples 16
 python3 verify.py out/reel.mp4
 uv run --with pillow python review.py out/reel.mp4 --times 0,0.8,4.6,8.6,10.6,14.98
 uv run --with pillow python review.py out/reel.mp4 --strip 7.65:9.20:20
+uv run --with pillow python review.py out/reel.mp4 --cues
 ```
 
-Read [review.md](references/review.md) for encoded-frame checks, motion strips, audio evidence and review handoffs. Use `--scale 2` for a native 4K master when needed, after the direction survives review.
+Read [review.md](references/review.md) for encoded-frame checks, motion strips, audio evidence and review handoffs. `verify.py` also measures mono fold-down and each cut against its sound onset, and names five timestamps for a person to audition. Use `--scale 2` for a native 4K master when needed, after the direction survives review.
 
 Separate **technical validity**, **visual acceptance**, and **audience response**. None proves the others. Do not claim aesthetic quality from frame counts or an agent's score.
 
 For a substantial film, use an independent reviewing agent when available and allowed by the host. Give it the brief and fixed encoded artifact, not the desired verdict. Otherwise perform an explicit second review and disclose that it was not independent. Fix specific findings and recheck changed intervals rather than endlessly rescanning unchanged work.
 
-Deliver the playable MP4, source/rebuild command and a useful poster. Report actual duration, material limits, and whether sound was only measured or also heard. Publish within the user's authorization. Read [credits-and-assets.md](references/credits-and-assets.md) before sharing third-party assets.
+Deliver the playable MP4, source/rebuild command and a useful poster. Report actual duration, material limits, and whether sound was only measured or also heard; when it was not heard, hand over the five listening timestamps. Publish within the user's authorization. Read [credits-and-assets.md](references/credits-and-assets.md) before sharing third-party assets.

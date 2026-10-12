@@ -7,6 +7,9 @@ here=Path(__file__).resolve().parent;repo=here.parents[1];dest=a.destination.res
 subprocess.run([sys.executable,str(repo/'skills/motion-reel/scripts/new_project.py'),str(dest),'--brand','CODEX','--tagline','把想象，变成现实。'],check=True)
 shutil.copy2(here/'scenes.js',dest/'scenes.js');shutil.copy2(here/'contours.js',dest/'symbol.js')
 cfg=json.loads((dest/'project.json').read_text());cfg.update(displayFont='system-ui',seed='NF3SQU86SFW7L6L2NXKGDXZX47SA8ZFUUVXXB7C6ZE6TVGN3',opening=['把想象，','推向现实。'],credit='EVERY FRAME. WRITTEN BY CODEX.')
+shot={s['scene']:s for s in cfg['shots']}
+shot['possibility']['copy']['caption']='从一个念头，到无限可能。'
+shot['build']['copy'].update(top='不止生成。',bottom='构建成真。')
 (dest/'project.json').write_text(json.dumps(cfg,ensure_ascii=False,indent=2)+'\n')
 subprocess.run([sys.executable,str(dest/'build.py')],check=True)
 print('Prepared Codex case study. Its original Chinese typography requires a compatible local CJK font; macOS is the reference environment.')

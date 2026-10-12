@@ -27,13 +27,16 @@ Example request:
 - A concise directing skill, with separate guides for composition, production and review.
 - An editable 15-second starter with 3D shapes, kinetic type, particles, spatial interfaces and original synthesized audio.
 - Linear-light temporal sampling, a shared beat grid, seeded geometry and a deterministic frame-capture pipeline.
-- Portable project scaffolding, dependency checks, encoded-output verification and motion-strip generation.
+- One `project.json` for copy, shot order, shot length and sound: “slow down the second shot” or “change this word” is a one-field edit, and every cut, impact and score cue follows.
+- Licensed music: `beats.py` measures a track's grid against its kicks (librosa alone can lock onto the off-beat or drift), and the renderer places the track and ledgered sound-effect files sample-accurately.
+- Short explainers from a project's real content: a method for finding what is worth animating, storyboards with `path:line` sources, and a build check that refuses on-screen numbers without a quoted source.
+- Portable project scaffolding, dependency checks, encoded-output verification (including mono fold-down, per-cut sound sync and five timestamps for a person to audition) and motion-strip generation.
 - A random-string association tool, used as a source of ideas rather than a quality metric.
 - Licensed bundled fonts, an original generic symbol, and a separately credited Codex example.
 
 ## Try the starter without an agent
 
-Requirements: Node.js 22+, Python 3.10+, FFmpeg/ffprobe and Chrome/Chromium with WebGL2 float targets. Set `CHROME_PATH` if automatic discovery fails. Pillow is only needed for contact sheets.
+Requirements: Node.js 22+, Python 3.10+, FFmpeg/ffprobe and Chrome/Chromium with WebGL2 float targets. Set `CHROME_PATH` if automatic discovery fails. Pillow is only needed for contact sheets, and librosa (through `uv run --with librosa --with matplotlib`) only for `beats.py`.
 
 ```sh
 git clone https://github.com/Daily-AC/motion-reel.git
@@ -55,7 +58,7 @@ The starter is a vocabulary, not an eight-shot mandate. Change the subject's arg
 
 See [validation](docs/validation.md) for the exact real runs performed for this release. macOS/Chrome is the tested reference environment. Linux/Windows browser discovery exists, but is not presented as a tested rendering guarantee. CJK and other writing systems need suitable fonts and fresh layout checks.
 
-Technical validity, visual acceptance and audience response are separate. The included film received positive feedback reported by its creator; this does not establish that every agent or prompt will produce equivalent taste. Sound was measured for loudness, peaks and timing; the original case did not receive subjective listening review.
+Technical validity, visual acceptance and audience response are separate. The included film received positive feedback reported by its creator; this does not establish that every agent or prompt will produce equivalent taste. Sound is measured for loudness, peaks, mono fold-down and cut timing; no measurement replaces listening, and the original case did not receive subjective listening review.
 
 ## License and credits
 

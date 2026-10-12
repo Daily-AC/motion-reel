@@ -1,5 +1,6 @@
 // Original scene design. brand's actual cloud contour carries the opening and closing.
-const TAU=Math.PI*2, RND=mulberry32(7711);
+// Every scene is draw(g, u, t, shot): u is its own clock (0 at the cut), t the film time, shot its project.json entry.
+const TAU=Math.PI*2;
 const smooth=x=>{x=clamp(x);return x*x*(3-2*x)};
 const QOUT=x=>1-Math.pow(1-clamp(x),4);
 function rect2(g,x,y,w,h,col,r=0){g.fillStyle=col;g.beginPath();g.roundRect(x,y,w,h,r);g.fill()}
@@ -134,13 +135,13 @@ function ribbonWorld(g,u,t){
     const ps=[];for(let i=0;i<=120;i++){const x=-150+i/120*2230,y=714+Math.sin(i/120*TAU+u*.55)*144;ps.push([x,y])}lightPath(g,ps,t,.50,1.45);
   });
 }
-function architecturalWorld(g,opt,u){
+function architecturalWorld(g,opt,u,t){
   pool(g,1050,753,930,267,'rgba(50,77,180,.30)');
   g.save();
   for(let z=-600;z<=700;z+=70){const a=projectP([-1100,-270,z],opt),b=projectP([1100,-270,z],opt);alpha(g,.23*(1-Math.abs(z)/1200),()=>segline(g,a[0],a[1],b[0],b[1],'#7e92d2',1.2));}
   for(let x=-1120;x<=1120;x+=80){const a=projectP([x,-270,-600],opt),b=projectP([x,-270,700],opt);alpha(g,.17,()=>segline(g,a[0],a[1],b[0],b[1],'#7e92d2',1.2));}
   g.restore();
-  const ps=[];for(let i=0;i<=140;i++){const x=-1150+i/140*2300;ps.push(projectP([x,-258,170+Math.sin(x*.003+u)*105],opt))}lightPath(g,ps,SHOT(4)+u,.9,2.1);
+  const ps=[];for(let i=0;i<=140;i++){const x=-1150+i/140*2300;ps.push(projectP([x,-258,170+Math.sin(x*.003+u)*105],opt))}lightPath(g,ps,t,.9,2.1);
   const scaffold=[];
   for(let i=0;i<12;i++){
     const side=i%2?-1:1,x=side*(700+(i%3)*100),y=-250+(1-smooth(seg(u,.1+i*.04,1.25)))*(140+i*15),z=-320+(i%4)*190;
@@ -154,8 +155,8 @@ function panelShadow(g,vs,opt){
 }
 
 // 0. A real 3D solid, already large and complete on frame zero.
-function S0(g,t){
-  const u=Math.max(0,t);bg(g,INK);
+function S0(g,u){
+  bg(g,INK);
   orbitalWorld(g,u);
   const pull=E.ioC(seg(u,.05,.62)),spin=smooth(seg(u,.62,1.30));
   const opt={ax:-.18+Math.sin(u*2)*.09,ay:lerp(-.65,.24,pull)+spin*.28,az:lerp(-.22,.08,pull),scale:lerp(1.60,1.04,pull),dist:1700,f:1420,cx:1100,cy:570};
@@ -167,25 +168,25 @@ function S0(g,t){
 }
 
 // 1. The word is a moving material: letters compress, expand and open a physical portal.
-function S1(g,t){
-  const u=Math.max(0,t-SHOT(1));bg(g,PAPER);
+function S1(g,u,t,shot){
+  const {word,portal,left,right}=shot.copy;bg(g,PAPER);
   const open=E.outE(seg(u,0,.23));rect2(g,0,0,W,H*(1-open),ACCENT);
-  const word='CODE',size=480,weights=[...word].map((_,i)=>Math.round(840-660*Math.pow(Math.sin(Math.PI*seg(u,.40+i*.12,1.10+i*.12)),2)));
+  const size=480,weights=[...word].map((_,i)=>Math.round(840-660*Math.pow(Math.sin(Math.PI*seg(u,.40+i*.12,1.10+i*.12)),2)));
   const widths=weights.map((w,i)=>{g.font=F(w,size);return g.measureText(word[i]).width-size*.03});const total=widths.reduce((a,b)=>a+b,0),start=(W-total)/2;
-  const zoom=1+E.inE(seg(u,1.35,BAR))*18,ox=start+widths[0]+widths[1]*.49,oy=H/2;
+  const zoom=1+E.inE(seg(u,1.35,BAR))*18,ox=start+widths.slice(0,portal).reduce((a,b)=>a+b,0)+widths[portal]*.49,oy=H/2;
   g.save();g.translate(W/2,H/2);g.scale(zoom,zoom);g.translate(-ox,-oy);
   let x=start;
-  for(let i=0;i<4;i++){
+  for(let i=0;i<word.length;i++){
     const en=E.outE(seg(u,i*.055,.37+i*.055)),dy=(i%2?1:-1)*(1-en)*420;
     const xs=1+.13*Math.sin(u*8-i*.9)*Math.exp(-u*.8);
     local(g,x+widths[i]/2,696+dy,1,Math.sin(u*5-i)*.028,()=>{g.scale(xs,1/xs);type(g,word[i],0,0,size,INK,weights[i]);});x+=widths[i];
   }
-  // The inside of O is the next scene's black space.
+  // The inside of the portal letter is the next scene's black space.
   if(u>1.23){const q=smooth(seg(u,1.23,1.48));disk(g,ox,oy,76*q,INK)}
   g.restore();
   // Reveal the next physical ring inside the aperture before the last dark frame.
   if(u>1.72)alpha(g,smooth(seg(u,1.72,BAR)),()=>ribbon(g,0,0));
-  if(u<1.30){caption(g,'THINK IT.',115,914,44,INK);caption(g,'THEN MAKE IT.',1805,914,44,INK,'right');}
+  if(u<1.30){caption(g,left,115,914,44,INK);caption(g,right,1805,914,44,INK,'right');}
 }
 
 // 2. Two-sided sculptural ribbon: a circle becomes a twisted, breathing Möbius loop.
@@ -206,30 +207,23 @@ function ribbon(g,u,explode=0){
   }
   mesh(g,faces,{ax:.48+u*.45,ay:-.36+u*.34,az:-.25+u*.37,scale:1.17+Math.sin(u*3)*.13+explode*.9,dist:1700,f:1800});
 }
-function S2(g,t){
-  const u=Math.max(0,t-SHOT(2));bg(g,INK);const handoff=smooth(seg(u,1.53,BAR));
+function S2(g,u,t,shot){
+  bg(g,INK);const handoff=smooth(seg(u,1.53,BAR));
   ribbonWorld(g,u,t);
   alpha(g,1-handoff,()=>ribbon(g,u,0));
   if(handoff>0)alpha(g,handoff,()=>{for(let i=0;i<NPART;i++){const p=particles[i],q=projectP(ribbonPoint(p.phase,(p.r-.5)*190,u),{ax:.48+u*.45,ay:-.36+u*.34,az:-.25+u*.37,scale:1.17+Math.sin(u*3)*.13,dist:1700,f:1800});rect2(g,q[0]-1.5,q[1]-1.5,3,3,i%11===0?ACCENT:PAPER)}});
-  alpha(g,1-handoff,()=>type(g,'TRANSFORM',105,191,64,PAPER,760,'left'));
+  alpha(g,1-handoff,()=>type(g,shot.copy.title,105,191,64,PAPER,760,'left'));
 }
 
-// Frozen particle seeds and text targets; no per-frame random state.
+// Frozen particle seeds and text targets; no per-frame random state. Built once, after fonts load.
 const maskCanvas=document.createElement('canvas');maskCanvas.width=1200;maskCanvas.height=310;
-const maskCtx=maskCanvas.getContext('2d');maskCtx.fillStyle='#fff';maskCtx.font=F(900,290);maskCtx.textAlign='center';maskCtx.fillText('BUILD',600,260);
-let maskData=maskCtx.getImageData(0,0,1200,310).data;
-let textDots=[],voxelDots=[];
-for(let y=8;y<300;y+=7)for(let x=8;x<1192;x+=7)if(maskData[(y*1200+x)*4+3]>180)textDots.push([x-600,155-y,0]);
-for(let y=16;y<292;y+=22)for(let x=16;x<1180;x+=22)if(maskData[(y*1200+x)*4+3]>180)voxelDots.push([x-600,155-y,0]);
+const maskCtx=maskCanvas.getContext('2d');
 const NPART=4096;
-let particles=Array.from({length:NPART},(_,i)=>{
-  const zz=1-2*(i+.5)/NPART,rr=Math.sqrt(1-zz*zz),a=i*2.399963229728653;
-  return {unit:[Math.cos(a)*rr,Math.sin(a)*rr,zz],r:RND(),phase:RND()*TAU,target:textDots[Math.floor(i/NPART*textDots.length)]};
-});
-function prepareTextTargets(){
- const fontRng=mulberry32(7711);
- maskCtx.clearRect(0,0,1200,310);maskCtx.fillStyle='#fff';maskCtx.font=F(900,290);maskCtx.textAlign='center';maskCtx.fillText('BUILD',600,260);
- maskData=maskCtx.getImageData(0,0,1200,310).data;textDots=[];voxelDots=[];
+let textDots=[],voxelDots=[],particles=[];
+async function prepare(){
+ const fontRng=mulberry32(7711),word=copyFor('possibility').target;
+ maskCtx.clearRect(0,0,1200,310);maskCtx.fillStyle='#fff';maskCtx.font=F(900,290);maskCtx.textAlign='center';maskCtx.fillText(word,600,260);
+ const maskData=maskCtx.getImageData(0,0,1200,310).data;textDots=[];voxelDots=[];
 for(let y=8;y<300;y+=7)for(let x=8;x<1192;x+=7)if(maskData[(y*1200+x)*4+3]>180)textDots.push([x-600,155-y,0]);
 for(let y=16;y<292;y+=22)for(let x=16;x<1180;x+=22)if(maskData[(y*1200+x)*4+3]>180)voxelDots.push([x-600,155-y,0]);
 particles=Array.from({length:NPART},(_,i)=>{
@@ -243,8 +237,8 @@ function particlePosition(p,i,u){
   const ring=ribbonPoint(p.phase,(p.r-.5)*190,BAR),start=p.unit.map((v,k)=>lerp(ring[k],v*r,burst)),helix=[Math.cos(a)*(210+70*Math.sin(z*.006+u*5)),Math.sin(a)*(210+70*Math.sin(z*.006+u*5)),z];
   return start.map((v,k)=>lerp(lerp(v,helix[k],contract),p.target[k],form));
 }
-function S3(g,t){
-  const u=Math.max(0,t-SHOT(3));bg(g,INK);
+function S3(g,u,t,shot){
+  bg(g,INK);
   pool(g,1030,570,760,480,'rgba(48,65,168,.19)',1-smooth(seg(u,.9,1.65)));
   const turn=E.ioC(seg(u,0,1.68));
   const opt={ax:lerp(.48+BAR*.45,-.08,turn),ay:lerp(-.36+BAR*.34,.10,turn),az:lerp(-.25+BAR*.37,0,turn),dist:lerp(1700,1500,turn),f:lerp(1800,1500,turn),scale:lerp(1.17+Math.sin(BAR*3)*.13,1.16,turn)};
@@ -254,14 +248,14 @@ function S3(g,t){
     const r=clamp(q[3]*(i%11===0?2.7:1.6),.7,5);g.fillRect(q[0]-r,q[1]-r,r*2,r*2);
     if(u<1.0){g.strokeStyle=i%11===0?ACCENT:PAPER;g.lineWidth=r;g.beginPath();g.moveTo(old[0],old[1]);g.lineTo(q[0],q[1]);g.stroke()}}
   g.globalAlpha=1;
-  alpha(g,smooth(seg(u,1.25,1.6)),()=>caption(g,'ONE IDEA. MANY POSSIBILITIES.',W/2,897,51,PAPER,'center'));
+  alpha(g,smooth(seg(u,1.25,1.6)),()=>caption(g,shot.copy.caption,W/2,897,51,PAPER,'center'));
 }
 
 // 4. The word leaves the flat page: individually articulated porcelain/green blocks.
-function S4(g,t){
-  const u=Math.max(0,t-SHOT(4));bg(g,INK);const spin=E.ioC(seg(u,.04,1.67));
+function S4(g,u,t,shot){
+  bg(g,INK);const spin=E.ioC(seg(u,.04,1.67));
   const opt={ax:lerp(-.08,.62,spin),ay:lerp(.10,-.85,spin),az:lerp(0,-.20,spin),dist:1800,f:1850,scale:1.11+smooth(seg(u,0,.48))*.27+Math.sin(u*2.4)*.09};
-  architecturalWorld(g,opt,u);
+  architecturalWorld(g,opt,u,t);
   const fs=[];
   for(let i=0;i<voxelDots.length;i++){
     const [x,y]=voxelDots[i],r=Math.hypot(x*.6,y),pulse=Math.exp(-Math.pow((r-(u*500)%420)/85,2));
@@ -270,36 +264,35 @@ function S4(g,t){
     boxFaces(x,y,z,19.5,19.5,depth,pulse>.46?RGB.accent:RGB.paper,fs);
   }
   mesh(g,fs,opt);
-  caption(g,'FROM A THOUGHT.',110,211,52);caption(g,'TO SOMETHING REAL.',1810,927,52,PAPER,'right');
+  caption(g,shot.copy.top,110,211,52);caption(g,shot.copy.bottom,1810,927,52,PAPER,'right');
   if(u>1.50){const q=E.inC(seg(u,1.50,BAR));for(let i=0;i<6;i++)rect2(g,i*W/6, i%2?H*(1-q):-H*(1-q),W/6+2,H,PAPER)}
 }
 
 // Interface textures are graphic content; their movement is full 3D perspective.
-function makePanel(kind,t){
+function makePanel(kind,t,panel){
   const can=panelCanvases[kind],p=can.getContext('2d'),w=960,h=620;
   p.clearRect(0,0,w,h);rect2(p,0,0,w,h,kind===1?INK:PAPER,18);
   const dark=kind===1,fg=dark?PAPER:INK;segline(p,0,67,w,67,dark?'#444d6a':'#a2abc6',2);
-  type(p,['FORM / STUDIO','BUILD / TERMINAL','MOTION / ENGINE'][kind],35,43,20,fg,650,'left',.02);
+  type(p,panel.title,35,43,20,fg,650,'left',.02);
   for(let j=0;j<3;j++)disk(p,872+j*24,34,5,j===2?ACCENT:fg);
   if(kind===0){
-    type(p,'Make it',50,206,101,INK,850,'left');type(p,'extraordinary.',50,310,101,INK,850,'left');
-    rect2(p,50,357,188,48,INK,24);type(p,'EXPLORE',144,389,19,PAPER,650,'center',.09);
+    panel.headline.forEach((s,i)=>type(p,s,50,206+i*104,101,INK,850,'left'));
+    rect2(p,50,357,188,48,INK,24);type(p,panel.button,144,389,19,PAPER,650,'center',.09);
     for(let j=0;j<25;j++){
       const a=j/25*TAU+t,xx=715+Math.cos(a)*125,yy=460+Math.sin(a)*70;
       local(p,xx,yy,1,a,()=>rect2(p,-37,-12,74,24,j%3===0?ACCENT:INK,3));
     }
-    segline(p,50,494,480,494,'#b8c1d9',2);type(p,'A NEW POSSIBILITY.',52,543,29,INK,550,'left',0);
+    segline(p,50,494,480,494,'#b8c1d9',2);type(p,panel.footer,52,543,29,INK,550,'left',0);
   }else if(kind===1){
-    const lines=['const possibility = imagine();','','for (const idea of possibility) {','  await design(idea);','  await build(idea);','  await test(idea);','}','','return makeItReal();'];
     p.textAlign='left';p.font=F(450,25,MONO);
-    lines.forEach((s,i)=>{p.fillStyle=i%3===0?ACCENT:PAPER;p.fillText(s,49,129+i*45)});
+    panel.code.forEach((s,i)=>{p.fillStyle=i%3===0?ACCENT:PAPER;p.fillText(s,49,129+i*45)});
     const bar=140+(Math.sin(t*3)+1)*260;rect2(p,45,550,bar,8,ACCENT,4);
   }else{
     for(let j=0;j<20;j++){
       p.strokeStyle=j%4===0?'#607ce3':'#93a2ca';p.lineWidth=j%4===0?4:2;p.beginPath();
       for(let i=0;i<=100;i++){const x=35+i/100*890,y=230+j*13+Math.sin(i*.1+j*.18+t*2)*62+Math.cos(i*.045-t*2)*40;i?p.lineTo(x,y):p.moveTo(x,y)}p.stroke();
     }
-    type(p,'Ideas in motion.',45,549,69,INK,800,'left');
+    type(p,panel.headline[0],45,549,69,INK,800,'left');
   }
   return can;
 }
@@ -321,10 +314,10 @@ function texturedQuad(g,img,vs,opt){
     texturedTriangle(g,img,[src[0],src[1],src[2]],[dst[0],dst[1],dst[2]]);texturedTriangle(g,img,[src[0],src[2],src[3]],[dst[0],dst[2],dst[3]]);
   }
 }
-function S5(g,t){
-  const u=Math.max(0,t-SHOT(5));bg(g,PAPER);
+function S5(g,u,t,shot){
+  bg(g,PAPER);
   pool(g,1070,885,920,210,'rgba(112,136,214,.22)');
-  type(g,'MAKE.',W/2,676,400,'#dfe5f3',900);
+  type(g,shot.copy.backdrop,W/2,676,400,'#dfe5f3',900);
   const progress=smooth(seg(u,.08,1.5));
   const cards=[];
   for(let i=0;i<3;i++){
@@ -337,24 +330,24 @@ function S5(g,t){
   cards.sort((a,b)=>b.z-a.z);
   const cardOpt={ax:.03,ay:Math.sin(u*.9)*.11,az:Math.sin(u)*-.04,dist:1900,f:1600,scale:1.30};
   const ps=[];for(let i=0;i<=150;i++){const a=i/150*TAU;ps.push(projectP([Math.cos(a)*1010,Math.sin(a)*210-10,Math.sin(a)*410],cardOpt))}lightPath(g,ps,t,.8,2.2);
-  cards.forEach(({i,vs})=>{panelShadow(g,vs,cardOpt);texturedQuad(g,makePanel(i,u),vs,cardOpt)});
+  cards.forEach(({i,vs})=>{panelShadow(g,vs,cardOpt);texturedQuad(g,makePanel(i,u,shot.copy.panels[i]),vs,cardOpt)});
   if(u>1.46){const q=E.inC(seg(u,1.46,BAR));g.save();g.translate(W/2,H/2);g.rotate((1-q)*-.23);rect2(g,-W*q/2,-H,W*q,H*3,INK);g.restore();}
 }
 
 // 6. Elastic type changes its physical grammar every beat; the word breaks apart.
-function S6(g,t){
-  const u=Math.max(0,t-SHOT(6)),beat=clamp(Math.floor(u/BEAT),0,3),v=fract(u/BEAT);bg(g,beat===2?ACCENT:INK);
-  const col=beat===2?INK:PAPER,words=['THINK','BUILD','BREAK','CREATE'],word=words[beat];
+function S6(g,u,t,shot){
+  const beat=clamp(Math.floor(u/BEAT),0,3),v=fract(u/BEAT);bg(g,beat===2?ACCENT:INK);
+  const col=beat===2?INK:PAPER,word=shot.copy.words[beat],mid=(word.length-1)/2;
   const size=word.length>5?295:370;
   g.save();g.translate(W/2,H/2+90);g.rotate([-.08,.04,-.08,.055][beat]*(1+Math.sin(v*6)*.25));
   for(let j=3;j>=1;j--)alpha(g,.12/j,()=>type(g,word,-j*45*(1-v),j*35*(1-v),size,col,900));
   if(beat===0){g.scale(1+.14*Math.sin(v*Math.PI),1-.16*Math.sin(v*Math.PI));type(g,word,0,0,size,col,900);}
   if(beat===1){
     const ww=300;
-    for(let j=0;j<word.length;j++){const p=spring(v-j*.035,3.8,.55);type(g,word[j],(j-2)*ww,(1-p)*(j%2?430:-430),size,col,900);}
+    for(let j=0;j<word.length;j++){const p=spring(v-j*.035,3.8,.55);type(g,word[j],(j-mid)*ww,(1-p)*(j%2?430:-430),size,col,900);}
   }
   if(beat===2){
-    for(let j=0;j<word.length;j++)local(g,(j-2)*290+(j-2)*190*E.inC(seg(v,.4,1)),Math.sin(j*3)*v*v*300,1,j*.13*v*v,()=>type(g,word[j],0,0,size,col,900));
+    for(let j=0;j<word.length;j++)local(g,(j-mid)*290+(j-mid)*190*E.inC(seg(v,.4,1)),Math.sin(j*3)*v*v*300,1,j*.13*v*v,()=>type(g,word[j],0,0,size,col,900));
   }
   if(beat===3){const q=1+.24*Math.exp(-v*5)*Math.sin(v*16);g.scale(q,1/q);type(g,word,0,0,size,col,900);}
   g.restore();
@@ -363,8 +356,8 @@ function S6(g,t){
 }
 
 // 7. A physical arrival, then one clear second for recognition.
-function S7(g,t){
-  const u=Math.max(0,t-SHOT(7));bg(g,PAPER);
+function S7(g,u){
+  bg(g,PAPER);
   // The light gathers under the lockup and fades into a quiet final hold.
   pool(g,1020,590,860,275,'rgba(146,164,233,.16)',1-smooth(seg(u,.1,1.10))*.65);
   const snap=spring(u,3.4,.6),centerX=1100,baseline=643;
@@ -382,3 +375,6 @@ function S7(g,t){
   const underline=QOUT(seg(u,.30,.92));
   alpha(g,.8*(1-smooth(seg(u,1.1,1.75))*.6),()=>segline(g,W/2-56,834,W/2-56+112*underline,834,ACCENT,2.5));
 }
+
+// Scene names used by project.json shots. `beats` is each scene's native length on the scene clock.
+const SCENE_LIBRARY={ignition:{draw:S0,beats:4},thought:{draw:S1,beats:4},transform:{draw:S2,beats:4},possibility:{draw:S3,beats:4},build:{draw:S4,beats:4},create:{draw:S5,beats:4},momentum:{draw:S6,beats:4},signature:{draw:S7,beats:4}};
