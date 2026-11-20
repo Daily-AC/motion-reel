@@ -10,6 +10,7 @@ is cached; the videos stay with their owners and are downloaded on request for p
   python3 refs.py search logo reveal --kind 3D   # all words must match; falls back to any word
   python3 refs.py show 0053d84c                  # full record and links
   python3 refs.py get 0053d84c --dest refs       # reference.mp4 + motion.md + meta.json
+  uv run --with pillow python refs.py frames 0053d84c --times 1.1,6.7   # labelled frames with a pixel grid
 """
 from pathlib import Path
 import argparse, http.client, io, json, os, shutil, subprocess, sys, time, urllib.error, urllib.request, zipfile
@@ -197,6 +198,77 @@ def download(entry, folder):
     print(json.dumps(result, ensure_ascii=False, indent=1))
 
 
+def frames(args):
+    """A sheet of reference frames at the given times with a pixel grid, in the coordinates measure_frame.mjs uses."""
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+    except ImportError:
+        raise SystemExit('refs.py frames needs Pillow: uv run --with pillow python refs.py frames ...')
+    entry = find(load()['entries'], args.id)
+    folder = args.dest.expanduser().resolve() / handle(entry)
+    video = folder / 'reference.mp4'
+    if not video.is_file():
+        raise SystemExit(f'{video} not found; download it first with refs.py get {handle(entry)} --dest {args.dest}')
+    probe = json.loads(subprocess.check_output(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries',
+                                                'stream=width,height:format=duration', '-of', 'json', str(video)]))
+    duration = float(probe['format']['duration'])
+    try:
+        times = [float(t) for t in args.times.split(',')]
+    except ValueError:
+        raise SystemExit('--times takes seconds separated by commas, such as 1.1,6.7') from None
+    if not 1 <= len(times) <= 12 or min(times) < 0 or max(times) >= duration:
+        raise SystemExit(f'Use 1-12 times within the reference ({duration:.2f} s)')
+    # Regions in measure_frame.mjs are in film pixels, with the reference scaled to the film size; grid the same space.
+    if args.size:
+        width, height = (int(v) for v in args.size.lower().split('x'))
+        basis = '--size'
+    elif Path('project.json').is_file():
+        cfg = json.loads(Path('project.json').read_text())
+        width, height, basis = cfg['width'], cfg['height'], 'film size from project.json'
+    else:
+        width, height, basis = probe['streams'][0]['width'], probe['streams'][0]['height'], 'reference size'
+    native = probe['streams'][0]['width'], probe['streams'][0]['height']
+    if abs(native[0] / native[1] - width / height) > .01:
+        basis += f'; the {native[0]}x{native[1]} reference is stretched to it, as measure_frame.mjs does'
+    k = min(1, 960 / width)
+    step = 100 if max(width, height) >= 1000 else 50
+    try:
+        font = ImageFont.truetype(str(Path(__file__).resolve().parents[1] / 'assets/fonts/JetBrainsMono-Regular.ttf'), 13)
+    except OSError:
+        font = ImageFont.load_default()
+    tiles = []
+    for t in times:
+        png = subprocess.check_output(['ffmpeg', '-v', 'error', '-ss', str(t), '-i', str(video), '-frames:v', '1',
+                                       '-vf', f'scale={width}:{height}:flags=area', '-f', 'image2pipe', '-vcodec', 'png', '-'])
+        tile = Image.open(io.BytesIO(png)).convert('RGBA').resize((round(width * k), round(height * k)), Image.LANCZOS)
+        grid = Image.new('RGBA', tile.size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(grid)
+        for axis, extent in ((0, width), (1, height)):
+            for v in range(step, extent, step):
+                major = v % (2 * step) == 0
+                p = round(v * k)
+                for offset, colour in ((1, (0, 0, 0, 90)), (0, (255, 255, 255, 150 if major else 70))):
+                    line = [p + offset, 0, p + offset, tile.height] if axis == 0 else [0, p + offset, tile.width, p + offset]
+                    draw.line(line, fill=colour)
+                if major:
+                    xy = (p + 3, 2) if axis == 0 else (2, p + 2)
+                    box = draw.textbbox(xy, str(v), font=font)
+                    draw.rectangle([box[0] - 2, box[1] - 1, box[2] + 2, box[3] + 1], fill=(0, 0, 0, 170))
+                    draw.text(xy, str(v), fill=(255, 255, 255, 255), font=font)
+        tiles.append((t, Image.alpha_composite(tile, grid).convert('RGB')))
+    cols = 1 if len(tiles) == 1 else 2
+    tw, th = tiles[0][1].size
+    sheet = Image.new('RGB', (cols * tw + (cols - 1) * 8, ((len(tiles) + cols - 1) // cols) * (th + 28)), (25, 29, 39))
+    draw = ImageDraw.Draw(sheet)
+    for i, (t, tile) in enumerate(tiles):
+        x, y = i % cols * (tw + 8), i // cols * (th + 28)
+        sheet.paste(tile, (x, y))
+        draw.text((x + 6, y + th + 7), f'{handle(entry)}  t={t:.3f}s  grid in {width}x{height} px ({basis})', fill='white', font=font)
+    out = folder / ('frames-' + '_'.join(f'{t:g}' for t in times) + '.png')
+    sheet.save(out)
+    print(out)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest='command', required=True)
@@ -216,12 +288,17 @@ def main():
     p = sub.add_parser('get', help='download the reference video and its motion notes')
     p.add_argument('id')
     p.add_argument('--dest', type=Path, default=Path('refs'))
+    p = sub.add_parser('frames', help='a labelled sheet of downloaded reference frames with a pixel grid (needs Pillow)')
+    p.add_argument('id')
+    p.add_argument('--times', required=True, help='seconds, comma-separated, such as 1.1,6.7')
+    p.add_argument('--dest', type=Path, default=Path('refs'))
+    p.add_argument('--size', help='grid in WxH pixels; default the film size from ./project.json, else the reference size')
     args = parser.parse_args()
     try:
         if args.command == 'sync':
             sync(args.url)
         else:
-            {'search': search, 'show': show, 'get': get}[args.command](args)
+            {'search': search, 'show': show, 'get': get, 'frames': frames}[args.command](args)
     except DownloadError as error:
         raise SystemExit(f'refs.py {args.command}: download failed: {error}')
 

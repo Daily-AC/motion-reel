@@ -206,3 +206,9 @@ Synthetic clips (640×360, 30 fps, a 120 px `testsrc2` tile on black, x264 CRF 1
 ### Reference downloads
 
 `refs.py get` against a local host that closes the first connection without a response: the second attempt downloaded the file intact and `meta.json` recorded `fps: 25` from the file. Against a host that always closes it: four attempts (0.5, 1 and 2 s apart), a single `refs.py get: download failed: … (4 attempts)` line, exit status 1, no traceback and no `refs/<id>/` folder; the previous script printed a traceback on the first dropped connection. Both cases are in `tests/check_bundle.py`. On the live catalog two launch films downloaded in 1.6–1.7 s each with `fps` 30.0 and 24.0 in `meta.json`, and `search model release` still fell back to any-word matches while `search 模型发布` matched launch films on all words, which is why reference-films.md now names the Chinese terms.
+
+### Reference frames and batch measurement
+
+`refs.py frames <id> --times …` writes one sheet of reference frames scaled to the film size (from `project.json`, or `--size`) with a grid every 100 film pixels, labelled every 200. Known answer, in `tests/check_bundle.py`: a 1280×720 reference with a white box at 100,100 (300×100) gridded at 1920×1080 shows the box at film 150,150 (450×150), grid lines at the right display columns, and `measure_frame.mjs --size 1920x1080` finds the same box within 2 px. On a live square catalog film three frames took 1.0 s; the caption states that the reference was stretched to 16:9, as the measurement stretches it.
+
+`measure_frame.mjs --pairs` returned one result per moment, each identical to the single-moment run, with labels kept; three moments of a live reference against the desk example took 0.45 s. The `_ok` remake flags now appear only with `--remake`; the measurements (`height_ratio`, `region_status`, `clipped`) are unchanged without it.

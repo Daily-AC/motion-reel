@@ -26,14 +26,25 @@ These films belong to their owners. Keep `refs/` in the film project, out of git
 
 Measure only after you have watched both films and chosen the moments that correspond (the logo hold against the logo hold, a card slide against a card slide). Numbers explain a visual finding; they do not replace it.
 
+**Pick moments and regions** on a sheet of reference frames with a pixel grid (Pillow):
+
+```sh
+uv run --with pillow python <skill>/scripts/refs.py frames <id> --times 1.1,6.7,12    # writes refs/<id>/frames-1.1_6.7_12.png
+```
+
+Run in the film project, the grid is in the film's pixels (its size from `project.json`; elsewhere pass `--size WxH`), which is the space `--ref-region` below uses: read a title's or logo's x, y, width and height straight off it. A reference with another aspect ratio is stretched to the film size, as the measurement stretches it, and the caption says so. `review.py --times` shows the film's side of the same moments.
+
 **Frame statistics** (Node and FFmpeg only):
 
 ```sh
 node measure_frame.mjs refs/<id>/reference.mp4 out/reel.mp4 --t 14.6 --ref-t 6.0 \
      [--region x,y,w,h --ref-region x,y,w,h]
+node measure_frame.mjs refs/<id>/reference.mp4 out/reel.mp4 --pairs review/moments.json
 ```
 
-Reports `mean_luma`, `detail` (share of sharp-edge pixels: density of lines, labels, wireframes) and `accent` (share of strongly colored pixels) for both frames at the film's size; with regions, the bounding box of the content against its local background, so the height of a title or logo can be compared. The `_ok` flags apply thresholds meant for remakes of the same composition (brightness ≥ 0.9×, detail ≥ 0.7×, accent ≥ 0.6×, title height ≥ 0.8×). For an original film, read the numbers and ignore the flags unless the composition is meant to match: a deliberately clean end card against a busy reference will "fail" detail without being wrong. Different aspect ratios are stretched to the film's size, which distorts `detail`; compare like with like or use regions.
+Reports `mean_luma`, `detail` (share of sharp-edge pixels: density of lines, labels, wireframes) and `accent` (share of strongly colored pixels) for both frames at the film's size; with regions, the bounding box of the content against its local background and `height_ratio`, so the height of a title or logo can be compared. `--pairs` measures several moments in one call: a JSON list whose entries take the per-moment options as keys (`t` or `frame`, `ref-t` or `ref-frame`, `region`, `ref-region`) plus an optional `label`, such as `[{"label": "title hold", "t": 14.6, "ref-t": 6.0, "region": "260,380,1400,200"}]`; it prints one result per entry. Keep that file with the review notes so a later revision reruns the same comparison.
+
+`--remake` adds `_ok` flags with thresholds meant for remakes of the same composition (brightness ≥ 0.9×, detail ≥ 0.7×, accent ≥ 0.6×, title height ≥ 0.8×). Leave it off for an original film and read the numbers: a deliberately clean end card against a busy reference has less detail without being wrong. Different aspect ratios are stretched to the film's size, which distorts `detail`; compare like with like or use regions.
 
 **Motion travel** (OpenCV via uv):
 

@@ -102,9 +102,32 @@ class Bundle(unittest.TestCase):
   with tempfile.TemporaryDirectory() as tmp:
    def clip(name,gray,h):subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i',f'color=0x{gray:02x}{gray:02x}{gray:02x}:s=640x360:r=30:d=1','-vf',f'drawbox=x=100:y=100:w=300:h={h}:color=white:t=fill','-c:v','libx264','-crf','12','-pix_fmt','yuv420p',str(Path(tmp)/name)],check=True)
    clip('ref.mp4',128,100);clip('film.mp4',64,70)
-   out=json.loads(subprocess.check_output(['node',str(SKILL/'scripts/measure_frame.mjs'),str(Path(tmp)/'ref.mp4'),str(Path(tmp)/'film.mp4'),'--t','0.5','--region','50,50,400,250']))
+   def measure(*a):return json.loads(subprocess.check_output(['node',str(SKILL/'scripts/measure_frame.mjs'),str(Path(tmp)/'ref.mp4'),str(Path(tmp)/'film.mp4'),*a]))
+   out=measure('--t','0.5','--region','50,50,400,250','--remake')
    self.assertAlmostEqual(out['ref']['mean_luma'],128*(1-30000/230400)+255*30000/230400,delta=1.5);self.assertFalse(out['brightness_ok'])
    self.assertEqual(out['ref']['region']['height_px'],100);self.assertEqual(out['film']['region']['height_px'],70);self.assertFalse(out['height_ok'])
+   # Remake thresholds only on request; the measurements are the same without them.
+   plain=measure('--t','0.5','--region','50,50,400,250');self.assertEqual([k for k in plain if k.endswith('_ok')],[]);self.assertEqual(plain['height_ratio'],.7)
+   # Several moments in one call: one result per entry, labels kept, each equal to its single-moment run.
+   (Path(tmp)/'pairs.json').write_text(json.dumps([{'label':'box','t':0.5,'region':'50,50,400,250'},{'t':0.2,'ref-t':0.8}]))
+   batch=measure('--pairs',str(Path(tmp)/'pairs.json'));self.assertEqual(len(batch),2);self.assertEqual(batch[0].pop('label'),'box');self.assertEqual(batch[0],plain)
+   self.assertEqual(batch[1],measure('--t','0.2','--ref-t','0.8'))
+ @unittest.skipUnless(__import__('shutil').which('ffmpeg') and __import__('shutil').which('uv'),'needs ffmpeg and uv')
+ def test_reference_frame_sheet_grid(self):
+  # A 1280x720 reference with a white box at 100,100 (300x100), gridded in 1920x1080 film pixels at 0.5 display scale: the box
+  # sits at film 150,150 (450x150), which is where measure_frame.mjs finds it, and grid lines fall on multiples of 100 film px.
+  with tempfile.TemporaryDirectory() as tmp:
+   t=Path(tmp);folder=t/'refs/c0000000';folder.mkdir(parents=True)
+   subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','color=0x404040:s=1280x720:r=25:d=2','-vf','drawbox=x=100:y=100:w=300:h=100:color=white:t=fill','-c:v','libx264','-crf','12','-pix_fmt','yuv420p',str(folder/'reference.mp4')],check=True)
+   (t/'motion-reel').mkdir();(t/'motion-reel/refs-index.json').write_text(json.dumps({'source':'fixture','synced':'today','entries':[{'id':'motion-c0000000-aaaa','brand':'','name':'box','video':'','motion_doc':None,'original':''}]}))
+   r=subprocess.run(['uv','run','-q','--with','pillow','python',str(SKILL/'scripts/refs.py'),'frames','c0000000','--times','0.5','--size','1920x1080'],cwd=t,capture_output=True,text=True,env={**__import__('os').environ,'XDG_CACHE_HOME':tmp})
+   self.assertEqual(r.returncode,0,r.stderr);sheet=Path(r.stdout.strip());self.assertEqual(sheet,(folder/'frames-0.5.png').resolve())
+   raw=subprocess.check_output(['ffmpeg','-v','error','-i',str(sheet),'-f','rawvideo','-pix_fmt','gray','-']);px=lambda x,y:raw[y*960+x]
+   self.assertEqual(len(raw),960*(540+28))
+   self.assertGreater(px(180,120),240);self.assertLess(abs(px(420,420)-64),4)           # inside the box; plain background
+   self.assertGreater(px(250,420),px(260,420)+30);self.assertGreater(px(300,420),px(250,420)+30)  # film x=500 minor, x=600 major
+   box=json.loads(subprocess.check_output(['node',str(SKILL/'scripts/measure_frame.mjs'),str(folder/'reference.mp4'),str(folder/'reference.mp4'),'--t','0.5','--size','1920x1080','--region','120,120,520,220']))['ref']['region']['bbox']
+   for got,want in zip(box,[150,150,450,150]):self.assertAlmostEqual(got,want,delta=2)
  @unittest.skipUnless(__import__('shutil').which('ffmpeg') and __import__('shutil').which('uv'),'needs ffmpeg and uv')
  def test_motion_measure_known_answer(self):
   # A textured block travels 240 px in the reference; the film repeats it later (no flag), travels 90 px (suppressed) or
