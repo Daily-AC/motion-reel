@@ -6,6 +6,8 @@ Music and sound-effect files carry their ledger in `project.json` (`source` and 
 
 The bundled generic symbol is original and is not an official logo for any existing company. For a known brand, replace it with verified assets. A bevel or material change should not alter the logo's essential outline or negative space.
 
+Reference films fetched with `refs.py` are third-party works for study. They stay in the film project's ignored `refs/` folder and never become assets, previews or published material; see reference-films.md.
+
 Inter Variable and JetBrains Mono retain their SIL Open Font License notices in `assets/fonts/`. Do not copy proprietary system fonts into a public package. A film rendered with locally installed system fonts is different from redistributing those font files.
 
 The repository's Codex case study contains an OpenAI brand-mark example. That mark remains associated with OpenAI; it is not an endorsement or an original mark offered under this toolkit's MIT license. Its vector transcription is credited separately. Use the generic starter for unrelated subjects.

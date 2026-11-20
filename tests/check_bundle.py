@@ -52,6 +52,42 @@ class Bundle(unittest.TestCase):
    r,_=build(dest,unsourced);self.assertNotEqual(r.returncode,0);self.assertIn('2.8',r.stderr)
    def wrong_line(c):c['shots'][2]['copy']['title']='2.7x FASTER';c['facts'][0]['source']='notes.md:1'
    r,_=build(dest,wrong_line);self.assertNotEqual(r.returncode,0);self.assertIn('not on notes.md:1',r.stderr)
+ def test_reference_search_offline(self):
+  # Search runs on the cached index: all words first, any word as a labelled fallback, filters narrow, ids resolve by prefix.
+  def entry(i,name,kind,brand,w,h,s):return {'id':f'motion-{i}0000000-aaaa','order':int(i),'brand':brand,'name':name,'name_en':'','summary':'','summary_en':'','style':'','style_en':'','use':'','use_en':'','kind':kind,'kind_en':'','tags':'','industries':[],'colors':[],'author':'','seconds':s,'width':w,'height':h,'video':'','motion_doc':None,'original':'','editable':False}
+  with tempfile.TemporaryDirectory() as tmp:
+   (Path(tmp)/'motion-reel').mkdir();(Path(tmp)/'motion-reel/refs-index.json').write_text(json.dumps({'source':'fixture','synced':'today','entries':[entry('1','Logo particle reveal','三维动效','Acme',1920,1080,12),entry('2','Logo slide','界面动效','Beta',1080,1920,30),entry('3','Grid tunnel','三维动效','Acme',720,720,9)]}))
+   env={**__import__('os').environ,'XDG_CACHE_HOME':tmp}
+   def refs(*a):return subprocess.run([sys.executable,str(SKILL/'scripts/refs.py'),*a],capture_output=True,text=True,env=env)
+   r=refs('search','logo','particle');self.assertIn('all words',r.stdout);self.assertIn('10000000',r.stdout);self.assertNotIn('20000000',r.stdout)
+   r=refs('search','logo','unicorn');self.assertIn('any word',r.stdout);self.assertIn('20000000',r.stdout)
+   r=refs('search','--kind','3d','--aspect','square');self.assertIn('30000000',r.stdout);self.assertNotIn('10000000',r.stdout)
+   self.assertEqual(json.loads(refs('show','20000000').stdout)['brand'],'Beta');self.assertNotEqual(refs('show','motion-').returncode,0)
+ @unittest.skipUnless(__import__('shutil').which('ffmpeg'),'needs ffmpeg')
+ def test_frame_measure_known_answer(self):
+  # A gray field with a white box: mean luma and box height have known values, and a shorter box must fail height.
+  with tempfile.TemporaryDirectory() as tmp:
+   def clip(name,gray,h):subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i',f'color=0x{gray:02x}{gray:02x}{gray:02x}:s=640x360:r=30:d=1','-vf',f'drawbox=x=100:y=100:w=300:h={h}:color=white:t=fill','-c:v','libx264','-crf','12','-pix_fmt','yuv420p',str(Path(tmp)/name)],check=True)
+   clip('ref.mp4',128,100);clip('film.mp4',64,70)
+   out=json.loads(subprocess.check_output(['node',str(SKILL/'scripts/measure_frame.mjs'),str(Path(tmp)/'ref.mp4'),str(Path(tmp)/'film.mp4'),'--t','0.5','--region','50,50,400,250']))
+   self.assertAlmostEqual(out['ref']['mean_luma'],128*(1-30000/230400)+255*30000/230400,delta=1.5);self.assertFalse(out['brightness_ok'])
+   self.assertEqual(out['ref']['region']['height_px'],100);self.assertEqual(out['film']['region']['height_px'],70);self.assertFalse(out['height_ok'])
+ @unittest.skipUnless(__import__('shutil').which('ffmpeg') and __import__('shutil').which('uv'),'needs ffmpeg and uv')
+ def test_motion_measure_known_answer(self):
+  # A textured block travels 240 px in the reference; the film repeats it later (no flag) or travels 90 px (flagged).
+  with tempfile.TemporaryDirectory() as tmp:
+   t=Path(tmp);subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','testsrc2=s=120x120','-frames:v','1',str(t/'tex.png')],check=True)
+   def clip(name,x):subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','color=black:s=640x360:r=30:d=5','-loop','1','-framerate','30','-i',str(t/'tex.png'),'-filter_complex',f"[0][1]overlay=x='{x}':y=120:shortest=1",'-c:v','libx264','-crf','12','-pix_fmt','yuv420p',str(t/name)],check=True)
+   clip('ref.mp4','if(lt(t,1),40,if(lt(t,2),40+240*(t-1),280))');clip('same.mp4','if(lt(t,3),40,if(lt(t,4),40+240*(t-3),280))');clip('weak.mp4','if(lt(t,3),40,if(lt(t,4),40+90*(t-3),130))')
+   def run(film):return subprocess.run(['uv','run','-q','--with','opencv-python-headless','--with','numpy','python',str(SKILL/'scripts/measure_motion.py'),str(t/'ref.mp4'),str(t/film),'--ref-start','1','--ref-end','2','--start','3','--end','4','--out',str(t/'m.json')],capture_output=True,text=True)
+   r=run('same.mp4');self.assertEqual(r.returncode,0,r.stderr);d=json.loads(r.stdout)
+   self.assertAlmostEqual(d['referenceSpanPx'][0],240,delta=2);self.assertAlmostEqual(d['outputSpanPx'][0],240,delta=2);self.assertFalse(d['possibleSuppressedMotion'])
+   r=run('weak.mp4');self.assertEqual(r.returncode,2);d=json.loads(r.stdout);self.assertAlmostEqual(d['outputSpanPx'][0],90,delta=2);self.assertTrue(d['possibleSuppressedMotion'])
+ def test_new_project_carries_reference_tools(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   dest=new_film(tmp)
+   for name in ['measure_frame.mjs','measure_motion.py','APACHE-2.0.txt']:self.assertTrue((dest/name).is_file(),name)
+   self.assertIn('refs/',(dest/'.gitignore').read_text())
  def test_licenses_and_asset_resolution(self):
   for p in ['LICENSE','assets/fonts/Inter-OFL.txt','assets/fonts/JetBrainsMono-OFL.txt','assets/fonts/InterVariable.woff2','assets/fonts/JetBrainsMono-Regular.ttf']:
    self.assertTrue((SKILL/p).is_file(),p);self.assertGreater((SKILL/p).stat().st_size,100)

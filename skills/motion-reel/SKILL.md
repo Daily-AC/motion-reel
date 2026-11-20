@@ -1,6 +1,6 @@
 ---
 name: motion-reel
-description: Direct and render polished short motion-graphics reels, brand films, kinetic showcases and short explainers in code. Use for a punchy product or identity reel; an explainer of a flow, a number change or a new feature built from a project's real content; cutting a reel to a licensed music track; or when existing animation feels static, sparse, incoherent, or unfinished. Includes deterministic rendering, synthesized or licensed sound with measured sync, and source-checked on-screen numbers. Not a live-action generator or long-form narrated-video workflow.
+description: Direct and render polished short motion-graphics reels, brand films, kinetic showcases and short explainers in code. Use for a punchy product or identity reel; an explainer of a flow, a number change or a new feature built from a project's real content; cutting a reel to a licensed music track; or when existing animation feels static, sparse, incoherent, or unfinished. Includes deterministic rendering, synthesized or licensed sound with measured sync, and source-checked on-screen numbers, plus a searchable catalog of commercial reference films with side-by-side frame and motion measurement. Not a live-action generator or long-form narrated-video workflow.
 ---
 
 # Motion Reel
@@ -25,6 +25,8 @@ Read [creative-direction.md](references/creative-direction.md) for substantial c
 2. **A handoff.** For each cut, name the shape, trajectory, color or sound carried forward. Match actual boundary positions and scale; shared geometry is more reliable than similar drawings.
 3. **A density rhythm.** Assign dense passages and quiet recognition moments. Sparse scenes may need their environment to respond to the subject, not particles everywhere.
 4. **A return.** Let an opening element earn its place in the close. The first frame should already communicate; the last hold should stay readable.
+
+Ground the direction in a peer: search a catalog of about 350 commercial brand films with `scripts/refs.py search <words>` and download one or two into the project with `refs.py get <id>`. Watch them before deciding the premise and handoffs; read [reference-films.md](references/reference-films.md) for search filters, rights and limits.
 
 If ideation stalls, run `scripts/creative_seed.py`. Its random groups are associations, not instructions or quality scores. Select only associations that serve the film and record their visible consequences.
 
@@ -74,7 +76,7 @@ uv run --with pillow python review.py out/reel.mp4 --strip 7.65:9.20:20
 uv run --with pillow python review.py out/reel.mp4 --cues
 ```
 
-Read [review.md](references/review.md) for encoded-frame checks, motion strips, audio evidence and review handoffs. `verify.py` also measures mono fold-down and each cut against its sound onset, and names five timestamps for a person to audition. Use `--scale 2` for a native 4K master when needed, after the direction survives review.
+Read [review.md](references/review.md) for encoded-frame checks, motion strips, audio evidence and review handoffs. When a reference film was chosen, compare matching moments with `node measure_frame.mjs` (brightness, detail, accent, title height) and `measure_motion.py` (travel, flags limp motion); both are in the project and explained in reference-films.md. `verify.py` also measures mono fold-down and each cut against its sound onset, and names five timestamps for a person to audition. Use `--scale 2` for a native 4K master when needed, after the direction survives review.
 
 Separate **technical validity**, **visual acceptance**, and **audience response**. None proves the others. Do not claim aesthetic quality from frame counts or an agent's score.
 

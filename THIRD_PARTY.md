@@ -5,6 +5,9 @@
 - **Codex contour transcription in the optional case study** — LobeHub, MIT; notice in `examples/codex/lobe-icons-LICENSE`. Source: https://github.com/lobehub/lobe-icons/blob/master/packages/static-svg/icons/codex.svg
 - **Codex / OpenAI brand identity** — associated marks remain the property of OpenAI. The case-study film is an independently made demonstration, not an official OpenAI campaign or endorsement. The repository MIT license does not grant trademark rights. Official visual reference: https://images.ctfassets.net/kftzwdyauwt9/4qyHvm6xZ6G2r2VawnGJgd/f52eeb2debad385ebe0d381d6dde5970/codex-seo-image.png
 
+- **Reference measurement tools** — `skills/motion-reel/scripts/measure_frame.mjs` and `measure_motion.py` are adapted from OpenMotion (nexu-io/openmotion, `skills/openmotion-recreate/scripts/`, revision 2ca4b97), Apache License 2.0; license text in `skills/motion-reel/scripts/APACHE-2.0.txt`, changes listed in each file's header. Source: https://github.com/nexu-io/openmotion
+- **Reference film catalog** — `refs.py` reads OpenMotion's published online template catalog at run time. No catalog films, keyframes or guide text are bundled here; the films and marks belong to their owners and are downloaded only on request, for private study.
+
 The core page-driven renderer, temporal compositor and synthesis primitives originated in Daily-AC's earlier `code-motion-video` work developed with Claude. Codex refined the reel, portable toolkit and methodology through user-directed iterations. The public starter's NOVA mark is original and is not an existing brand asset.
 
 [Lemo-Opuscar](https://github.com/lemomo-ai/lemo-opuscar) was related inspiration previously shared by the user. No catalog films, assets or guide text from that repository are bundled here. Its code is MIT; its guides and films use CC BY 4.0, and third-party media keep their own licenses. Those terms are separate from this repository's MIT license.

@@ -31,6 +31,7 @@ Example request:
 - Licensed music: `beats.py` measures a track's grid against its kicks (librosa alone can lock onto the off-beat or drift), and the renderer places the track and ledgered sound-effect files sample-accurately.
 - Short explainers from a project's real content: a method for finding what is worth animating, storyboards with `path:line` sources, and a build check that refuses on-screen numbers without a quoted source.
 - Portable project scaffolding, dependency checks, encoded-output verification (including mono fold-down, per-cut sound sync and five timestamps for a person to audition) and motion-strip generation.
+- Reference films: `refs.py` searches a public catalog of about 350 commercial brand films and launches and downloads one into the project for study; `measure_frame.mjs` and `measure_motion.py` (adapted from OpenMotion, Apache-2.0) put brightness, detail, accent, title height and motion travel side by side at matching moments.
 - A random-string association tool, used as a source of ideas rather than a quality metric.
 - Licensed bundled fonts, an original generic symbol, and a separately credited Codex example.
 
