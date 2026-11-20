@@ -91,4 +91,81 @@ class Bundle(unittest.TestCase):
  def test_licenses_and_asset_resolution(self):
   for p in ['LICENSE','assets/fonts/Inter-OFL.txt','assets/fonts/JetBrainsMono-OFL.txt','assets/fonts/InterVariable.woff2','assets/fonts/JetBrainsMono-Regular.ttf']:
    self.assertTrue((SKILL/p).is_file(),p);self.assertGreater((SKILL/p).stat().st_size,100)
+def decode(path,w,h,frame=None):
+ """RGB24 pixels of a PNG still or of a zero-based frame of a video, as decoded by FFmpeg."""
+ sel=[] if frame is None else ['-vf',f'select=eq(n\\,{frame})','-fps_mode','passthrough']
+ raw=subprocess.check_output(['ffmpeg','-v','error','-i',str(path),*sel,'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'])
+ assert len(raw)==w*h*3,(path,frame,len(raw));return raw
+def luma(raw):return [(77*raw[i]+150*raw[i+1]+29*raw[i+2])>>8 for i in range(0,len(raw),3)]
+def linear(v):v/=255;return v/12.92 if v<=.04045 else ((v+.055)/1.055)**2.4
+def lap_var(y,w,x0,y0,x1,y1):
+ v=[y[r*w+c-1]+y[r*w+c+1]+y[(r-1)*w+c]+y[(r+1)*w+c]-4*y[r*w+c] for r in range(y0,y1) for c in range(x0,x1)];m=sum(v)/len(v)
+ return sum((a-m)**2 for a in v)/len(v)
+def strays(raw,w,own,box,tol=12):
+ """Pixels inside box (x0,y0,x1,y1) whose channels differ from their own shot's color by more than tol."""
+ x0,y0,x1,y1=box;return sum(1 for r in range(y0,y1) for c in range(x0,x1) if max(abs(raw[(r*w+c)*3+i]-own[i]) for i in range(3))>tol)
+@unittest.skipUnless(__import__('shutil').which('ffmpeg') and __import__('shutil').which('node'),'needs ffmpeg and node')
+class ThreeScenes(unittest.TestCase):
+ """Known answers for three.js shots, measured on the renderer's decoded output. Skips when no browser can render."""
+ W,H=480,270
+ @classmethod
+ def project(cls,shots):
+  dest=Path(cls.tmp.name)/f'film{len(list(Path(cls.tmp.name).iterdir()))}';subprocess.run([sys.executable,str(SKILL/'scripts/new_project.py'),str(dest)],check=True,capture_output=True)
+  (dest/'scenes.js').write_text((ROOT/'tests/three_fixture.js').read_text())
+  cfg=json.loads((dest/'project.json').read_text());cfg.update(width=cls.W,height=cls.H,fps=60,bpm=120,sceneBpm=120,shots=shots,sound={'synth':False,'music':None,'library':{}})
+  (dest/'project.json').write_text(json.dumps(cfg));return dest
+ @classmethod
+ def setUpClass(cls):
+  cls.tmp=tempfile.TemporaryDirectory();shot=lambda scene,**copy:{'scene':scene,'id':f'{scene}{len(copy)}{sorted(copy.items())}','beats':2,'hud':None,'copy':copy}
+  # 0-1 s static lit set, 1-2 s moving card, 2-6 s depth of field: aperture 0 near/far focus, aperture 0.3 near/far focus
+  cls.film=cls.project([shot('lit'),shot('mover',speed=71.4,at=.5)]+[shot('dof',aperture=a,focus=f) for a in (0,.3) for f in (10,30)])
+  doctor=subprocess.run(['node','render.mjs','doctor'],cwd=cls.film,capture_output=True,text=True)
+  if doctor.returncode:cls.tmp.cleanup();raise unittest.SkipTest('no Chrome/Chromium for rendering: '+doctor.stderr.strip()[-200:])
+  cls.stills={}
+  for n in (1,4,16):
+   ts='0.5' if n<16 else '0.5,1.5,1.5041666666666667,2.5,3.5,4.5,5.5'
+   r=subprocess.run(['node','render.mjs','stills',ts,'--samples',str(n)],cwd=cls.film,capture_output=True,text=True)
+   if r.returncode and ('WebGL2 is unavailable' in r.stderr or 'Floating-point color targets' in r.stderr):cls.tmp.cleanup();raise unittest.SkipTest('browser cannot render WebGL2 float targets')
+   if r.returncode:raise RuntimeError(r.stderr)
+   for t in ts.split(','):cls.stills[(n,float(t))]=decode(cls.film/'review/stills'/f'{t}.png',cls.W,cls.H)
+ @classmethod
+ def tearDownClass(cls):cls.tmp.cleanup()
+ def test_static_brightness_independent_of_samples(self):
+  # Accumulation must average, not sum or keep the last subframe: same mean luma at 1, 4 and 16 samples (±1%).
+  frames={n:self.stills[(n,.5)] for n in (1,4,16)};means={n:sum(luma(f))/(self.W*self.H) for n,f in frames.items()}
+  self.assertLessEqual(max(means.values())/min(means.values()),1.01,means)
+  # and the samples did change the picture (soft shadow, depth of field, antialiasing), so the check is not vacuous
+  self.assertGreater(sum(abs(a-b) for a,b in zip(frames[1],frames[16]))/len(frames[1]),.5)
+ def test_motion_blur_extent(self):
+  # A card crossing at a known speed is smeared by speed × shutter (0.5 frame). Coverage a(x) in linear light;
+  # each blurred edge is a ramp of length L with integral of a(1-a) = L/6. Measured inside the vignette-free centre.
+  bg,fg=linear(64),linear(224);x0,x1,rows=150,330,range(115,156)
+  def cover(raw):y=luma(raw);return [[(linear(y[r*self.W+c])-bg)/(fg-bg) for c in range(x0,x1)] for r in rows]
+  a,b=cover(self.stills[(16,1.5)]),cover(self.stills[(16,1.5041666666666667)])  # a quarter frame apart
+  centroid=lambda m:sum(x*v for row in m for x,v in enumerate(row))/sum(v for row in m for v in row)
+  per_frame=4*(centroid(b)-centroid(a));self.assertAlmostEqual(per_frame,71.4*135/(10*0.2679491924)/60,delta=1.5)
+  blur=sum(3*sum(v*(1-v) for v in row) for row in a)/len(a)
+  self.assertAlmostEqual(blur/(per_frame*.5),1,delta=.15,msg=f'blur {blur:.1f}px, expected {per_frame*.5:.1f}px')
+ def test_depth_of_field(self):
+  # Equal-size checkered cards at depth 10 (left) and 30 (right). Sharpness = variance of the Laplacian of luma.
+  def sharp(t):y=luma(self.stills[(16,t)]);return lap_var(y,self.W,50,65,190,205),lap_var(y,self.W,291,65,432,205)
+  (n0,f0),(n0b,f0b),(n_near,f_near),(n_far,f_far)=map(sharp,(2.5,3.5,4.5,5.5))
+  near=lambda a,b:abs(a/b-1)<=.15
+  self.assertTrue(near(n0,n0b) and near(f0,f0b),'aperture 0 must not depend on focus')
+  self.assertTrue(near(n_near,n0),f'in-focus near card changed: {n_near:.0f} vs {n0:.0f}');self.assertLessEqual(f_near,f0/3,f'far card not defocused: {f_near:.0f} vs {f0:.0f}')
+  self.assertTrue(near(f_far,f0),f'in-focus far card changed: {f_far:.0f} vs {f0:.0f}');self.assertLessEqual(n_far,n0/3,f'near card not defocused: {n_far:.0f} vs {n0:.0f}')
+ def test_cuts_between_2d_and_3d_never_blend(self):
+  # Cuts at 1.02 s and 2.02 s fall inside the shutters of frames 61 and 121. Every subframe of a frame belongs to the shot
+  # at its centre, so frames 60-61 | 62-63 and 120-121 | 122-123 hold only their own shot's color in the encoded film.
+  colors={'2d-a':(255,48,0),'3d':(0,80,255),'2d-b':(0,192,96)}
+  film=self.project([{'scene':'solid2d','id':'2d-a','beats':2.04,'hud':None,'hit':10,'copy':{'color':'#FF3000'}},{'scene':'solid3d','id':'3d','beats':2,'hud':None,'hit':10,'copy':{'color':'#0050FF'}},{'scene':'solid2d','id':'2d-b','beats':2,'hud':None,'copy':{'color':'#00C060'}}])
+  r=subprocess.run(['node','render.mjs','render','--out','out/cuts.mp4','--samples','16'],cwd=film,capture_output=True,text=True);self.assertEqual(r.returncode,0,r.stderr)
+  self.assertEqual(subprocess.run([sys.executable,'verify.py','out/cuts.mp4'],cwd=film,capture_output=True).returncode,0)
+  box=(150,70,330,200)
+  for frame,own in [(60,'2d-a'),(61,'2d-a'),(62,'3d'),(63,'3d'),(120,'3d'),(121,'3d'),(122,'2d-b'),(123,'2d-b')]:
+   self.assertEqual(strays(decode(film/'out/cuts.mp4',self.W,self.H,frame),self.W,colors[own],box),0,f'frame {frame} is not pure {own}')
+  # the check would catch one subframe in sixteen from the other shot (blended in linear light)
+  mix=lambda a,b:round(255*((15*linear(a)+linear(b))/16)**(1/2.4)) if a or b else 0
+  blend=bytes(c for _ in range(self.W*self.H) for c in (mix(255,0),mix(48,80),mix(0,255)))
+  self.assertGreater(strays(blend,self.W,colors['2d-a'],box),0)
 if __name__=='__main__':unittest.main()

@@ -10,6 +10,7 @@
   body { display: grid; place-items: center; }
   canvas { width: 100vw; height: calc(100vw * 9 / 16); max-height: 100vh; max-width: calc(100vh * 16 / 9); }
 </style>
+<script type="importmap">{"imports":{"three":"./vendor/three/three.module.js","three/addons/":"./vendor/three/addons/"}}</script>
 </head>
 <body>
 <canvas id="out"></canvas>
@@ -138,7 +139,8 @@ function hud(ctx,t,tf,k){
 //  then one post pass adds chromatic aberration, vignette and grain.
 // ============================================================================================
 // Each scene runs on its own clock: 0 at the cut, reaching its native length (SCENE_LIBRARY beats × BEAT) at the next cut.
-const SHOTS=TIMELINE.shots.map(s=>{const lib=SCENE_LIBRARY[s.scene];if(!lib)throw new Error(`Shot ${s.id}: scene "${s.scene}" is not in SCENE_LIBRARY`);return {...s,draw:lib.draw,rate:lib.beats*BEAT/(s.beats*SPB)};});
+// A scene is Canvas2D ({draw, beats}) or three.js ({three, beats}); both kinds share this timeline, the shutter and the post.
+const SHOTS=TIMELINE.shots.map(s=>{const lib=SCENE_LIBRARY[s.scene];if(!lib)throw new Error(`Shot ${s.id}: scene "${s.scene}" is not in SCENE_LIBRARY`);if(!lib.draw===!lib.three)throw new Error(`Scene "${s.scene}" needs exactly one of draw (Canvas2D) or three (three.js)`);return {...s,draw:lib.draw,three:lib.three,rate:lib.beats*BEAT/(s.beats*SPB)};});
 // the shot comes from the frame time, so all subframes of a frame belong to one shot: cuts never blend
 const shotAt = tf => { let s = 0; while (s + 1 < SHOTS.length && tf >= SHOTS[s + 1].start - 1e-9) s++; return s; };
 const sc = document.createElement('canvas'); sc.width = PW; sc.height = PH;
@@ -178,6 +180,7 @@ function prog(fs) {
   gl.bindAttribLocation(p, 0, 'p'); gl.linkProgram(p); if(!gl.getProgramParameter(p,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(p));return p;
 }
 const pAcc = prog(FS_ACC), pPost = prog(FS_POST);
+const vao = gl.createVertexArray(); gl.bindVertexArray(vao);   // the quad's own vertex state, untouched by three.js
 const vb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vb);
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
 gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
@@ -205,6 +208,8 @@ function drawScene(t, tf) {
   hud(ctx, t, tf, k);
 }
 function renderFrame(tf, sub = SUB) {
+  if (SHOTS[shotAt(tf)].three) return renderFrame3(tf, sub);
+  gl.bindVertexArray(vao);
   gl.bindFramebuffer(gl.FRAMEBUFFER, fbo); gl.viewport(0, 0, PW, PH);
   gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
   gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
@@ -232,6 +237,113 @@ function renderFrame(tf, sub = SUB) {
 }
 const pixels = new Uint8Array(PW * PH * 4);
 function readFrame() { gl.readPixels(0, 0, PW, PH, gl.RGBA, gl.UNSIGNED_BYTE, pixels); return pixels; }
+
+// ============================================================================================
+//  three.js scenes, loaded only when a shot uses one. {three: async (THREE, renderer) => ({scene, rig, update?, frame?, overlay?})}
+//  renders through one WebGLRenderer sharing this canvas's context into a half-float target. Each subframe adds that
+//  linear radiance to the same accumulator as a Canvas2D shot, with the same shutter time, subpixel jitter and shake,
+//  plus a lens sample (depth of field) and a light sample (soft shadows) for the scene to use. The post pass applies the
+//  rig's exposure, then clips like a Canvas2D shot (designed colors come out exact) or, with shoulder: true, rolls off
+//  highlights with Khronos PBR Neutral's shoulder, which leaves linear values below 0.76 untouched.
+// ============================================================================================
+let THREE = null, R3, rt3, rt3Tex, cam3, oc, octx, texOverlay, pAcc3, pPost3;
+const THREE_SCENES = new Map(), DESIGN = 16 / 9, GOLDEN = 2.399963229728653;
+// Rig helpers. A rig is (u, t, shot) => {position, target, fov, focus, aperture, exposure, shoulder, vw, near, far, up}: fov is the
+// vertical field of view of a 16:9 frame; on a narrower canvas the shot keeps vw of that width (default 0.62) and grows taller.
+function frameRect(center, normal, width, fov = 30, up = [0, 1, 0]) {   // screen close-up: `width` fills the frame width, straight on
+  const d = width / 2 / (Math.tan(fov * Math.PI / 360) * DESIGN);
+  return { position: center.map((c, i) => c + normal[i] * d), target: center, focus: center, fov, up, vw: 1 };
+}
+function reactRig(subject, facing, angle, dist, height = 0, fov = 30) {    // reaction shot: off the subject's facing direction (yaw, 0 = +z)
+  const a = facing + angle;
+  return { position: [subject[0] + Math.sin(a) * dist, subject[1] + height, subject[2] + Math.cos(a) * dist], target: subject, focus: subject, fov };
+}
+const gcd = (a, b) => b ? gcd(b, a % b) : a;
+const coprimeNear = (n, f) => { let p = Math.max(1, Math.round(n * f)); while (gcd(p, n) !== 1) p++; return p; };
+// Subframe j of n: subpixel jitter (as in 2D), and lens/light points in the unit disk, permuted so they do not follow shutter
+// time. Each set is centred, so the average of n subframes matches the pinhole, point-light frame and brightness holds at any n.
+const DISKS = new Map();
+function subSample(j, n) {
+  if (n === 1) return { index: 0, count: 1, jitter: [0, 0], lens: [0, 0], light: [0, 0] };
+  if (!DISKS.has(n)) {
+    const disk = (p, o, a0) => { const pts = [...Array(n)].map((_, k) => { const i = (k * p + o) % n, r = Math.sqrt((i + 0.5) / n), a = i * GOLDEN + a0; return [r * Math.cos(a), r * Math.sin(a)]; });
+      const m = [0, 1].map(c => pts.reduce((s, q) => s + q[c], 0) / n); return pts.map(q => [q[0] - m[0], q[1] - m[1]]); };
+    DISKS.set(n, { lens: disk(coprimeNear(n, 0.618), 0, 0), light: disk(coprimeNear(n, 0.382), n >> 1, 1.3) });
+  }
+  const d = DISKS.get(n);
+  return { index: j, count: n, jitter: [halton(j + 1, 2) - 0.5, halton(j + 1, 3) - 0.5], lens: d.lens[j], light: d.light[j] };
+}
+// Thin lens: move the camera across the aperture and shift the image back so the focus plane stays put.
+function aim(cam, L, smp, sx, sy) {
+  const a = PW / PH, k = Math.tan(L.fov * Math.PI / 360);
+  const tanV = a >= DESIGN ? k : Math.max(k, (L.vw ?? 0.62) * k * DESIGN / a), tanH = tanV * a;
+  cam.fov = Math.atan(tanV) * 360 / Math.PI; cam.aspect = a; cam.near = L.near ?? 0.1; cam.far = L.far ?? 1000;
+  cam.up.set(...(L.up || [0, 1, 0])); cam.position.set(...L.position); cam.lookAt(...L.target); cam.updateMatrixWorld();
+  const m = cam.matrixWorld.elements, p = L.position, f = L.focus || L.target, ap = L.aperture || 0;
+  const dist = Math.max(1e-6, -((f[0] - p[0]) * m[8] + (f[1] - p[1]) * m[9] + (f[2] - p[2]) * m[10]));
+  const lx = smp.lens[0] * ap, ly = smp.lens[1] * ap;
+  cam.position.set(p[0] + m[0] * lx + m[4] * ly, p[1] + m[1] * lx + m[5] * ly, p[2] + m[2] * lx + m[6] * ly); cam.updateMatrixWorld();
+  // offsets in pixels, y down: refocus, then the same subpixel jitter and impact shake a Canvas2D shot gets
+  cam.setViewOffset(PW, PH, -lx / (dist * tanH) * PW / 2 - smp.jitter[0] - sx * SCALE, ly / (dist * tanV) * PH / 2 - smp.jitter[1] - sy * SCALE, PW, PH);
+  cam.updateProjectionMatrix();
+}
+const postSource3 = () => FS_POST.replace('uniform vec2 res;', 'uniform vec2 res; uniform sampler2D overlay; uniform float exposure, shoulderOn, overlayOn;\n' +
+  'vec3 shoulder(vec3 c){ float p = max(c.r, max(c.g, c.b)); if (p < 0.76) return c; float n = 1.0 - 0.0576 / (p - 0.52); c *= n / p; return mix(c, vec3(n), 1.0 - 1.0 / (0.15 * (p - n) + 1.0)); }\n' +
+  'vec3 srgb(vec3 c){ c = clamp(c, 0.0, 1.0); return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }')
+  .replace('c = pow(max(c, 0.0), vec3(1.0 / 2.2));', 'c = max(c, 0.0) * exposure; if (shoulderOn > 0.5) c = shoulder(c); c = srgb(c);\n  if (overlayOn > 0.5) { vec4 ov = texture(overlay, uv); c = mix(c, ov.rgb, ov.a); }');
+const FS_POST3 = postSource3(); if (!FS_POST3.includes('overlayOn > 0.5') || !FS_POST3.includes('uniform float exposure')) throw new Error('3D post shader was not derived');
+async function setupThree() {
+  THREE = await import('three');
+  R3 = new THREE.WebGLRenderer({ canvas: out, context: gl });
+  rt3 = new THREE.WebGLRenderTarget(PW, PH, { type: THREE.HalfFloatType, depthBuffer: true });
+  R3.setRenderTarget(rt3); R3.setRenderTarget(null);
+  rt3Tex = R3.properties.get(rt3.texture).__webglTexture;
+  if (!rt3Tex) throw new Error('three.js render target was not allocated');
+  cam3 = new THREE.PerspectiveCamera(30, PW / PH, 0.1, 1000);
+  for (const s of SHOTS) if (s.three && !THREE_SCENES.has(s.scene)) {
+    const sc3 = await s.three(THREE, R3);
+    if (!sc3 || !sc3.scene || typeof sc3.rig !== 'function') throw new Error(`three.js scene "${s.scene}" must return {scene, rig}`);
+    THREE_SCENES.set(s.scene, sc3);
+  }
+  R3.resetState();
+  oc = document.createElement('canvas'); oc.width = PW; oc.height = PH; octx = oc.getContext('2d');
+  texOverlay = mkTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE);
+  pAcc3 = prog(`#version 300 es
+precision highp float; uniform sampler2D tex; uniform float w; in vec2 uv; out vec4 o;
+void main(){ o = vec4(texture(tex, uv).rgb * w, 1.0); }`);
+  pPost3 = prog(FS_POST3);
+}
+function renderFrame3(tf, sub) {
+  const k = shotAt(tf), s = SHOTS[k], sc3 = THREE_SCENES.get(s.scene), local = t => Math.max(0, (t - s.start) * s.rate);
+  const uni = (p, n) => gl.getUniformLocation(p, n), quad = () => { gl.bindVertexArray(vao); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); gl.bindVertexArray(null); };
+  TF = tf;
+  if (sc3.frame) sc3.frame(local(tf), tf, s);                                   // once per frame: screen textures, numbers
+  const lens = sc3.rig(local(tf), tf, s), exposure = lens.exposure ?? 1;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo); gl.viewport(0, 0, PW, PH); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+  for (let j = 0; j < sub; j++) {
+    const t = tf + ((j + 0.5) / sub - 0.5) * SHUTTER / FPS, u = local(t), smp = subSample(j, sub), [sx, sy] = shake(t);
+    aim(cam3, sc3.rig(u, t, s), smp, sx, sy);
+    if (sc3.update) sc3.update(u, t, s, smp, cam3);
+    R3.resetState(); R3.setRenderTarget(rt3); R3.render(sc3.scene, cam3); R3.resetState();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo); gl.viewport(0, 0, PW, PH); gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+    gl.useProgram(pAcc3); gl.uniform1i(uni(pAcc3, 'tex'), 0); gl.uniform1f(uni(pAcc3, 'w'), 1 / sub);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, rt3Tex); quad();
+  }
+  gl.disable(gl.BLEND);
+  // HUD and the scene's 2D overlay: drawn once at the frame-center time and composited after tone mapping, in display space.
+  octx.setTransform(1, 0, 0, 1, 0, 0); octx.clearRect(0, 0, PW, PH); octx.setTransform(SCALE, 0, 0, SCALE, 0, 0);
+  if (sc3.overlay) { octx.save(); sc3.overlay(octx, local(tf), tf, s); octx.restore(); }
+  octx.globalAlpha = 1; hud(octx, tf, tf, k);
+  const overlayOn = sc3.overlay || s.hud ? 1 : 0;
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, texOverlay);
+  if (overlayOn) { gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, oc); }
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, texAcc);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, PW, PH); gl.useProgram(pPost3);
+  gl.uniform1i(uni(pPost3, 'acc'), 0); gl.uniform1i(uni(pPost3, 'overlay'), 1); gl.uniform1f(uni(pPost3, 'overlayOn'), overlayOn);
+  gl.uniform1f(uni(pPost3, 'exposure'), exposure); gl.uniform1f(uni(pPost3, 'shoulderOn'), lens.shoulder ? 1 : 0); gl.uniform1f(uni(pPost3, 'ca'), caAt(tf)); gl.uniform1f(uni(pPost3, 'vig'), 0.04);
+  gl.uniform1f(uni(pPost3, 'grain'), 0.005); gl.uniform1ui(uni(pPost3, 'seed'), Math.round(tf * FPS) + 1); gl.uniform2f(uni(pPost3, 'res'), PW, PH);
+  quad();
+}
 
 // ============================================================================================
 //  Sound. Synthesised offline from the same beat grid, so every hit lands on its frame.
@@ -368,6 +480,7 @@ window.addEventListener('unhandledrejection', e => post('/error', String(e.reaso
 (async () => {
   // Scenes may define async prepare(): load images (await img.decode()), build text masks. It runs once, after fonts, before any frame.
   await Promise.all([document.fonts.load(F(500,14,MONO)),document.fonts.load(F(900,100,SANS))]);await document.fonts.ready; if(typeof prepare==='function')await prepare();
+  if(SHOTS.some(s=>s.three))await setupThree();
   await post('/hello',JSON.stringify({width:PW,height:PH,fps:FPS,duration:DUR}));
   if (MODE === 'still') {
     for (const t of (Q.get('ts') || '0').split(',')) { renderFrame(+t); await post('/still?t=' + t, readFrame()); }
