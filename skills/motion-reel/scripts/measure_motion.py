@@ -1,12 +1,13 @@
 """Observe feature travel in a reference interval, or compare it with an interval of your film.
 
 Tracks a continuous interval at each video's native frame rate (OpenCV corner features, forward-backward
-Lucas-Kanade) and reports how far the region's content travels. With a film, it flags possible suppressed
-motion when the film's travel, normalised by frame size, is under half the reference's. It does not grade
-semantic fidelity.
+Lucas-Kanade) and reports how far the region's content travels. With a film, travel is normalised by each
+frame size and compared: possible suppressed motion under half the reference's, possible excess motion over
+twice it. A reference that barely moves sets no bar for excess. It does not grade semantic fidelity.
 
-  uv run --with opencv-python-headless --with numpy python measure_motion.py REF [FILM] --start S --end E \
-      [--ref-start S --ref-end E] [--roi x,y,w,h] [--output-roi x,y,w,h] --out report.json
+  uv run --with opencv-python-headless --with numpy python measure_motion.py REF --ref-start S --ref-end E
+  uv run --with opencv-python-headless --with numpy python measure_motion.py REF FILM --start S --end E \
+      [--ref-start S --ref-end E] [--roi x,y,w,h] [--output-roi x,y,w,h] [--out report.json]
 
 Adapted from OpenMotion (github.com/nexu-io/openmotion, skills/openmotion-recreate/scripts/measure_motion.py at
 2ca4b97), Apache License 2.0, see APACHE-2.0.txt. Changes: runs under uv instead of OpenMotion's managed runtime;
@@ -115,57 +116,80 @@ def measure_video(filename, start, end, roi, max_width):
         capture.release()
 
 
-def suppression_warning(reference, output):
+STATIC = .003  # normalised travel below which a reference interval counts as not moving
+
+
+def travel(result):
     import numpy as np
 
+    return float(np.linalg.norm(np.array(result['spanPx']) / [result['width'], result['height']]))
+
+
+def compare(reference, output):
+    """Film travel over reference travel, and the two flags. None where a measurement or a bar is missing."""
     if reference['status'] != 'measured' or output['status'] != 'measured':
-        return None
-    a = np.linalg.norm(np.array(reference['spanPx']) / [reference['width'], reference['height']])
-    b = np.linalg.norm(np.array(output['spanPx']) / [output['width'], output['height']])
-    return bool(a > .003 and b < a * .5)
+        return None, None, None
+    a, b = travel(reference), travel(output)
+    if a < STATIC:  # a locked-off reference: nothing to be suppressed against, and no bar for how far the film may move
+        return None, False, None
+    return round(b / a, 2), b < a * .5, b > a * 2
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('reference', type=Path)
     parser.add_argument('output', type=Path, nargs='?', help='Your film. Omit it to observe reference motion before authoring.')
-    parser.add_argument('--start', type=float, required=True, help='Interval start in the film (and the reference unless --ref-start).')
-    parser.add_argument('--end', type=float, required=True)
-    parser.add_argument('--ref-start', type=float, help='Reference interval start when it differs from the film.')
+    parser.add_argument('--start', type=float, help='Interval start in the film (and the reference unless --ref-start).')
+    parser.add_argument('--end', type=float, help='Interval end in the film.')
+    parser.add_argument('--ref-start', type=float, help='Reference interval start; defaults to --start.')
     parser.add_argument('--ref-end', type=float, help='Reference interval end; defaults to --ref-start plus the film interval length.')
     parser.add_argument('--roi', type=rectangle, help='Reference region in original pixels.')
     parser.add_argument('--output-roi', type=rectangle, help='Film region in its original pixels. Supply this when --roi needs different film coordinates.')
     parser.add_argument('--max-width', type=int, default=640)
-    parser.add_argument('--out', type=Path, required=True)
+    parser.add_argument('--out', type=Path, help='Write the full report (samples, tracked point pairs) here.')
     args = parser.parse_args()
     try:
         import numpy as np
         import cv2
     except ImportError:
         parser.exit(2, 'Needs OpenCV and NumPy: uv run --with opencv-python-headless --with numpy python measure_motion.py ...\n')
+    if (args.start is None) != (args.end is None):
+        parser.error('Give --start and --end together.')
+    if args.output is not None and args.start is None:
+        parser.error('Comparing with a film needs its interval: --start and --end.')
+    film = [] if args.start is None else [args.start, args.end]
     ref_start = args.start if args.ref_start is None else args.ref_start
-    ref_end = args.ref_end if args.ref_end is not None else ref_start + (args.end - args.start)
-    if (not np.isfinite([args.start, args.end, ref_start, ref_end]).all() or min(args.start, ref_start) < 0
-            or args.end <= args.start or ref_end <= ref_start or args.max_width < 64):
+    ref_end = args.ref_end
+    if ref_end is None and ref_start is not None and film:
+        ref_end = ref_start + (args.end - args.start)
+    if ref_start is None or ref_end is None:
+        parser.error('Give the reference interval: --ref-start and --ref-end, or --start and --end.')
+    times = film + [ref_start, ref_end]
+    if (not np.isfinite(times).all() or min(times) < 0 or ref_end <= ref_start
+            or (film and args.end <= args.start) or args.max_width < 64):
         parser.error('Use finite times with 0 <= start < end for both intervals and --max-width of at least 64.')
     if args.output is None and args.output_roi is not None:
         parser.error('--output-roi requires an output video.')
     reference = measure_video(args.reference, ref_start, ref_end, args.roi, args.max_width)
-    report = {'reference': reference, 'output': None, 'comparisonPerformed': False, 'possibleSuppressedMotion': None,
+    report = {'reference': reference, 'output': None, 'comparisonPerformed': False, 'travelRatio': None,
+              'possibleSuppressedMotion': None, 'possibleExcessMotion': None,
               'limits': 'Source-only observations describe reference motion. Comparisons use the corresponding continuous intervals given for each video; travel is normalised by each frame size. Select a region belonging to the feature being checked. Mixed stationary and moving content, occlusion, material changes and uncertain tracking can invalidate these measurements. Object identity and semantic fidelity are assessed through visual review when that scope is requested.'}
-    summary = {'output': str(args.out), 'referenceStatus': reference['status'], 'outputStatus': None,
+    summary = {'output': str(args.out) if args.out else None, 'referenceStatus': reference['status'], 'outputStatus': None,
                'referenceSpanPx': reference.get('spanPx'), 'outputSpanPx': None,
-               'comparisonPerformed': False, 'possibleSuppressedMotion': None}
+               'comparisonPerformed': False, 'travelRatio': None, 'possibleSuppressedMotion': None, 'possibleExcessMotion': None}
+    if reference['status'] == 'measured' and travel(reference) < STATIC:
+        summary['note'] = report['note'] = 'The reference interval barely moves, so it sets no bar for how far the film may move.'
     failed = reference['status'] != 'measured'
     if args.output is not None:
         output = measure_video(args.output, args.start, args.end, args.output_roi or args.roi, args.max_width)
-        warning = suppression_warning(reference, output)
-        report.update(output=output, comparisonPerformed=True, possibleSuppressedMotion=warning)
-        summary.update(outputStatus=output['status'], outputSpanPx=output.get('spanPx'),
-                       comparisonPerformed=True, possibleSuppressedMotion=warning)
-        failed = failed or output['status'] != 'measured' or warning is True
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(report, indent=2) + '\n')
+        ratio, suppressed, excess = compare(reference, output)
+        flags = dict(comparisonPerformed=True, travelRatio=ratio, possibleSuppressedMotion=suppressed, possibleExcessMotion=excess)
+        report.update(output=output, **flags)
+        summary.update(outputStatus=output['status'], outputSpanPx=output.get('spanPx'), **flags)
+        failed = failed or output['status'] != 'measured' or suppressed is True or excess is True
+    if args.out:
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps(summary))
     return 2 if failed else 0
 

@@ -74,15 +74,24 @@ class Bundle(unittest.TestCase):
    self.assertEqual(out['ref']['region']['height_px'],100);self.assertEqual(out['film']['region']['height_px'],70);self.assertFalse(out['height_ok'])
  @unittest.skipUnless(__import__('shutil').which('ffmpeg') and __import__('shutil').which('uv'),'needs ffmpeg and uv')
  def test_motion_measure_known_answer(self):
-  # A textured block travels 240 px in the reference; the film repeats it later (no flag) or travels 90 px (flagged).
+  # A textured block travels 240 px in the reference; the film repeats it later (no flag), travels 90 px (suppressed) or
+  # 460 px right and 200 px down (2.4x the normalised travel: excess). A static reference sets no bar for excess.
   with tempfile.TemporaryDirectory() as tmp:
    t=Path(tmp);subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','testsrc2=s=120x120','-frames:v','1',str(t/'tex.png')],check=True)
-   def clip(name,x):subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','color=black:s=640x360:r=30:d=5','-loop','1','-framerate','30','-i',str(t/'tex.png'),'-filter_complex',f"[0][1]overlay=x='{x}':y=120:shortest=1",'-c:v','libx264','-crf','12','-pix_fmt','yuv420p',str(t/name)],check=True)
+   def clip(name,x,y='120'):subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','color=black:s=640x360:r=30:d=5','-loop','1','-framerate','30','-i',str(t/'tex.png'),'-filter_complex',f"[0][1]overlay=x='{x}':y='{y}':shortest=1",'-c:v','libx264','-crf','12','-pix_fmt','yuv420p',str(t/name)],check=True)
    clip('ref.mp4','if(lt(t,1),40,if(lt(t,2),40+240*(t-1),280))');clip('same.mp4','if(lt(t,3),40,if(lt(t,4),40+240*(t-3),280))');clip('weak.mp4','if(lt(t,3),40,if(lt(t,4),40+90*(t-3),130))')
-   def run(film):return subprocess.run(['uv','run','-q','--with','opencv-python-headless','--with','numpy','python',str(SKILL/'scripts/measure_motion.py'),str(t/'ref.mp4'),str(t/film),'--ref-start','1','--ref-end','2','--start','3','--end','4','--out',str(t/'m.json')],capture_output=True,text=True)
+   clip('fast.mp4','if(lt(t,3),40,if(lt(t,4),40+460*(t-3),500))','if(lt(t,3),20,if(lt(t,4),20+200*(t-3),220))');clip('still.mp4','260')
+   def measure(*a):return subprocess.run(['uv','run','-q','--with','opencv-python-headless','--with','numpy','python',str(SKILL/'scripts/measure_motion.py'),*a],capture_output=True,text=True)
+   def run(film,ref='ref.mp4'):return measure(str(t/ref),str(t/film),'--ref-start','1','--ref-end','2','--start','3','--end','4','--out',str(t/'m.json'))
    r=run('same.mp4');self.assertEqual(r.returncode,0,r.stderr);d=json.loads(r.stdout)
-   self.assertAlmostEqual(d['referenceSpanPx'][0],240,delta=2);self.assertAlmostEqual(d['outputSpanPx'][0],240,delta=2);self.assertFalse(d['possibleSuppressedMotion'])
-   r=run('weak.mp4');self.assertEqual(r.returncode,2);d=json.loads(r.stdout);self.assertAlmostEqual(d['outputSpanPx'][0],90,delta=2);self.assertTrue(d['possibleSuppressedMotion'])
+   self.assertAlmostEqual(d['referenceSpanPx'][0],240,delta=2);self.assertAlmostEqual(d['outputSpanPx'][0],240,delta=2);self.assertFalse(d['possibleSuppressedMotion']);self.assertFalse(d['possibleExcessMotion'])
+   r=run('weak.mp4');self.assertEqual(r.returncode,2);d=json.loads(r.stdout);self.assertAlmostEqual(d['outputSpanPx'][0],90,delta=2);self.assertTrue(d['possibleSuppressedMotion']);self.assertFalse(d['possibleExcessMotion'])
+   r=run('fast.mp4');self.assertEqual(r.returncode,2);d=json.loads(r.stdout);self.assertAlmostEqual(d['outputSpanPx'][0],460,delta=3);self.assertAlmostEqual(d['outputSpanPx'][1],200,delta=3)
+   self.assertTrue(d['possibleExcessMotion']);self.assertFalse(d['possibleSuppressedMotion']);self.assertAlmostEqual(d['travelRatio'],((460/640)**2+(200/360)**2)**.5/(240/640),delta=.05)
+   r=run('fast.mp4','still.mp4');self.assertEqual(r.returncode,0,r.stdout);d=json.loads(r.stdout);self.assertIsNone(d['possibleExcessMotion']);self.assertFalse(d['possibleSuppressedMotion']);self.assertIn('no bar',d['note'])
+   # Reference alone, as reference-films.md shows it: only --ref-start/--ref-end, no film interval and no report file.
+   r=measure(str(t/'ref.mp4'),'--ref-start','1','--ref-end','2');self.assertEqual(r.returncode,0,r.stderr);d=json.loads(r.stdout)
+   self.assertAlmostEqual(d['referenceSpanPx'][0],240,delta=2);self.assertFalse(d['comparisonPerformed'])
  def test_new_project_carries_reference_tools(self):
   with tempfile.TemporaryDirectory() as tmp:
    dest=new_film(tmp)

@@ -41,10 +41,16 @@ uv run --with opencv-python-headless --with numpy python measure_motion.py \
     [--roi x,y,w,h --output-roi x,y,w,h] --out review/motion.json
 ```
 
-Tracks corner features through each interval and reports how far the region's content travels (`spanPx`, `pathLengthPx`). `possibleSuppressedMotion` is true when the film's travel, normalized by frame size, is under half the reference's: the typical "my version feels limp" defect. Omit the film to observe the reference alone before authoring.
+Tracks corner features through each interval and reports how far the region's content travels (`spanPx`, `pathLengthPx`). Travel is normalized by each frame size; `travelRatio` is the film's over the reference's. `possibleSuppressedMotion` is true under half the reference's travel: the typical "my version feels limp" defect. `possibleExcessMotion` is true over twice it: a push or slide faster than the peer, which reads as a jolt. Either flag makes the exit status 2. To observe the reference alone before authoring, omit the film and its interval:
+
+```sh
+uv run --with opencv-python-headless --with numpy python measure_motion.py refs/<id>/reference.mp4 --ref-start 6.2 --ref-end 6.6
+```
+
+A locked-off reference sets no bar for a camera move. A film built from static shots, or one that moves by switching textures and materials, measures near zero; the excess flag is then `null` with a note. To judge a camera move, measure a reference that actually moves its camera, even if it is not the film you are matching otherwise.
 
 It measures translation of trackable texture. It works on slides, pans, camera moves and rigid groups over short intervals. It reports `unresolved` instead of a number when features are lost, which happens with motion blur, morphing shapes, particles converging from all sides (their median translation is near zero anyway), flashes and cuts. On a 60 fps reel with heavy shutter blur, 0.3–0.5 s intervals on one element resolved where 1.3 s intervals did not. Narrow the interval and the region before concluding anything; an unresolved result is not evidence either way.
 
 ## What to do with the numbers
 
-A gap is a question for the review, not an instruction. Lower detail than the reference may mean a sparse frame (see the "Empty frame" row in SKILL.md) or a deliberate quiet hold. A suppressed-motion flag on an entrance usually means the move needs a longer path, a faster release or an overshoot. Record the reference id, the times compared and the numbers in the review notes so a later revision can rerun the same comparison.
+A gap is a question for the review, not an instruction. Lower detail than the reference may mean a sparse frame (see the "Empty frame" row in SKILL.md) or a deliberate quiet hold. A suppressed-motion flag on an entrance usually means the move needs a longer path, a faster release or an overshoot. An excess-motion flag on a camera move usually means a shorter path or a slower, eased start, unless the jolt is the point. Record the reference id, the times compared and the numbers in the review notes so a later revision can rerun the same comparison.
