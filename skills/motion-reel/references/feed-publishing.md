@@ -14,7 +14,7 @@ Render 1080×1920 from a project whose layouts were composed for it. Never lette
 
 ## Safe zones on a 1080×1920 frame
 
-- Top: the status bar and the app's tabs cover the top edge. A HUD or label belongs in a band around y ≈ 250, below them.
+- Top: the status bar and the app's tabs cover the top edge. A HUD or label belongs in a band around y ≈ 250, below them; the engine's HUD moves there on a portrait canvas.
 - Bottom: about the lowest 25% holds the account name, caption and music line. Keep titles, faces, logos and numbers out of it.
 - Right: a column of buttons (like, comment, share, avatar) runs down the right edge. Keep key content left of it.
 - Low subjects should sit mid-frame; in 3D, lower the look target for portrait.

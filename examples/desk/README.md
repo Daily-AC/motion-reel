@@ -15,4 +15,4 @@ What to read in `scenes.js`:
 - `screen` and `react` are two framings of one set: both library entries name the same `desk` setup, so it is built once.
 - `HOPS` is the character's timeline. Position, squash and stretch derive from it; `score.js` reads the same table for the take-off and landing sounds.
 - `YAW` and `BLINK` are keyframe channels. The reaction shot uses `reactRig()`, a shallow aperture on the face and `shoulder: true` for the lamp-lit room.
-- The rig sets `near`/`far` for the wide shot. With the default 0.1–1000 range the screen and its bezel, 0.02 units apart, z-fought at 120 units away.
+- The rig sets `near`/`far` for the wide shot. With the default 0.1–1000 range the screen and its bezel, 0.01 units apart, z-fought at 120 units away.

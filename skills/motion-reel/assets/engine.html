@@ -130,8 +130,10 @@ function caAt(t) {
 function hud(ctx,t,tf,k){
  const s=SHOTS[k];if(!s.hud)return;
  ctx.save();ctx.font=F(550,15,MONO);ctx.fillStyle=s.hud==='ink'?INK:PAPER;ctx.globalAlpha=.67;
- ctx.textAlign='left';ctx.fillText(BRAND.name+' / '+BRAND.eyebrow,68,65);
- ctx.textAlign='right';ctx.fillText(s.label,W-68,H-56);ctx.restore();
+ // On a portrait canvas both labels sit in a band at y≈250: below a feed's top bar, clear of its caption zone and buttons.
+ const x=VERT?72:68,yTop=VERT?250:65,yLabel=VERT?250:H-56;
+ ctx.textAlign='left';ctx.fillText(BRAND.name+' / '+BRAND.eyebrow,x,yTop);
+ ctx.textAlign='right';ctx.fillText(s.label,W-x,yLabel);ctx.restore();
 }
 
 // ============================================================================================

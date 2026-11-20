@@ -104,3 +104,52 @@ Known-answer checks (also in `tests/check_bundle.py`): a textured block moving 2
 On a delivered 60 fps reel with 16-sample motion blur, motion tracking resolved 0.3–0.5 s intervals (2.0–2.6 s type slide, 7.7–8.2 s camera move) and returned `unresolved` for 1.3 s intervals, a morphing panel grid and letter flashes. It did not fabricate a number in those cases. Frame statistics against a catalog end card (Claude Haiku 5.5) reported detail 0.0074 against 0.0125: correct as a measurement, but the reel's clean end card is deliberate, which is why the guide tells original films to read the numbers and not the remake thresholds.
 
 The catalog's HTML demos for two entries were rendered at their reference keyframe times and compared side by side: both were rough compositional sketches (substituted fonts, missing glow and logos, shifted timing). `get` therefore leaves them out. The tool adaptation keeps `measure_frame.mjs` and `measure_motion.py`; OpenMotion's planar camera registration and particle-mark observer were not added because no film here needed them.
+
+## three.js scenes on the shared timeline (2026-11-20)
+
+Observed on an Apple M4 Pro, macOS 26.6, Chrome 157 (Metal), Node 22.23.4, FFmpeg 9.0.2, three.js r186 (npm `three@0.186.1`, integrity checked against the registry).
+
+### Design
+
+A three.js scene renders through a `WebGLRenderer` that shares the compositor's WebGL2 context, into a half-float target; each subframe's linear radiance goes into the same RGBA16F accumulator as Canvas2D shots. Rejected: a separate three.js canvas uploaded per subframe (8-bit, so emitters and highlights clip before motion blur averages them, plus a cross-context copy per subframe); moving the whole compositor into three.js (the 2D path would change and every 2D film would load three.js); a scene-owned camera (a lens rig as data lets the engine apply depth of field, jitter, shake and portrait framing the same way for every scene).
+
+### 2D path unchanged
+
+The starter's stills at 0, 0.8, 4.6, 8.6, 10.6 and 14.3 s with 8 samples are byte-identical between main and this branch. A full 16-sample render of the starter passed `verify.py` (900 frames, no errors or warnings, mono loss 0.18 dB, cuts within 5 ms of their sound).
+
+Full renders were also compared frame by frame (`framemd5` of the decoded video) against a render from main. Ten renders from main were all identical. Of ten from this branch, eight were identical, including the last six in a row; two differed in the BUILD shot only (frames 459–562 in one, 529–562 in the other: a few frames whose Canvas2D floor grid and lower caption rasterized differently, PSNR 48.7–54 dB, then H.264 carrying the change to the next keyframe). That shot is drawn by the unchanged 2D path, which differs from main only by binding its own vertex array; no mechanism was found, and 2 of 10 against 0 of 10 is not significant (Fisher p ≈ 0.47). It is recorded rather than explained.
+
+On a portrait canvas the HUD now sits in the y ≈ 250 band that feed apps leave clear; landscape output is unchanged (the stills above were rechecked after this change).
+
+### Known answers for the 3D path
+
+Measured on rendered stills and an encoded film, now in `tests/check_bundle.py` (480×270; the tests skip when no browser can render WebGL2 float targets):
+
+| Check | Result |
+|---|---|
+| Static lit set with depth of field and a jittered shadow-casting light: mean luma at 1, 4 and 16 samples | 122.53, 123.19, 123.08: spread 0.54% (limit 1%) |
+| Card crossing at 59.96 px/frame (analytic): measured speed, blur length against speed × 0.5 frame | 60.00 px/frame; blur 30.66 px for 30.00 expected (+2.2%, limit ±15%) |
+| Depth of field, Laplacian variance of near / far checkered cards | aperture 0: 11108 / 11034 focused near, 11106 / 11032 focused far. Aperture 0.3 focused near: 11106 / 819 (far 13.5× lower). Focused far: 882 / 11028 |
+| 2D → 3D → 2D cuts at 1.02 s and 2.02 s, inside the shutters of frames 61 and 121 | Frames 60–61 / 62–63 and 120–121 / 122–123 hold only their own shot's color (0 pixels off by more than 12 levels); a synthetic one-subframe-in-sixteen blend is rejected by the same check |
+
+The first lens/light sample sets were Vogel spirals whose mean is off-center for small counts (0.16 of the radius at 4 samples); the brightness spread was 0.79%. Centering each set brought it to 0.54%.
+
+Designed colors: a three.js background of `#0050FF` rendered as `0,80,255`. With the highlight shoulder always on it rendered as `33,82,241`, which is why the shoulder is opt-in per rig and the default clips like a 2D shot.
+
+### Mixed film through the unchanged CLI
+
+`examples/desk` (7 s, 1080p60, 16 samples: 2D panel, the panel on a three.js monitor, a reaction shot, a 2D end card) rendered in 11 s and passed `verify.py`: 420 frames, no errors or warnings, cuts 5–6 ms from their sound, mono loss 0.15 dB. Across the 2D → 3D match cut the paper, card and accent colors differ by at most 0.4 code values, and the PSNR between the last 2D and first 3D frame is 36.8 dB (neighbouring frames inside each shot: 42.6–44.0 dB, since the progress bar moves). Rendering stills exposed three defects that are now fixed in the example and described in three-d.md: the screen z-fought its bezel in the wide shot with the default 0.1 near plane, a landing squash that jumped inside one shutter interval rendered as two ghost copies, and a turn-to-camera with the wrong sign. A portrait render of the same project kept full width on the screen close-up and 0.62 of it on the reaction shots.
+
+### Port of a delivered three.js film
+
+Act I (2.0–12.0 s) of a 48 s three.js film with 12,000 instanced spheres, shadows, mirrored reflections and a spline camera was ported by importing its physics, stage and camera modules unchanged and replacing only its frame loop with the engine. Its 600 frames at 24 samples rendered in 70 s and passed `verify.py`. `measure_frame.mjs` against the original encoded film at matching frames:
+
+| Original time | Original luma / detail | Port, engine post | Port, engine accumulator + the film's own post | The film's post without bloom (stills) |
+|---|---|---|---|---|
+| 2.50 s | 79.6 / 0.0330 | 63.0 (−20.9%) / 0.0680 (+106%) | 79.6 (0.0%) / 0.0330 (0.0%) | 62.3 (−21.7%) |
+| 6.00 s | 51.8 / 0.0414 | 40.0 (−22.8%) / 0.0548 (+32%) | 51.8 (0.0%) / 0.0408 (−1.4%) | 39.5 (−23.9%) |
+| 11.00 s | 34.5 / 0.0322 | 27.4 (−20.6%) / 0.0405 (+26%) | 34.5 (0.0%) / 0.0316 (−1.9%) | 27.2 (−21.2%) |
+
+With the engine's own post the port misses the 5% brightness and 20% detail targets. Geometry, camera, depth of field, motion blur and soft shadows match (PSNR 35.4–38.2 dB against the original once its post is applied to the engine's accumulator, compared with 19.5–26.3 dB with the engine's post). The whole difference is the original's bloom: its post with bloom set to 0 is as dark as the engine's, and bloom also softens every bead edge, which the detail metric counts. The engine has no bloom; this is recorded as a limit, not hidden by tuning exposure.
+
+Not covered: Linux and Windows rendering of the 3D path, 4K renders of three.js shots, and any listening of the example's sound.

@@ -109,12 +109,12 @@ Selecting the shot per subframe instead of per frame would let the second half o
 
 - Same frame at `--samples 1`, `4` and `16`: mean brightness must agree within about 1%. More samples getting darker or brighter means accumulation is broken; a common cause is a render pass that clears the accumulation target between subframes (three.js's `autoClear` does exactly that if you accumulate inside three.js yourself). In one delivered film this bug was hidden for a while by raising exposure, and depth of field and motion blur had never actually rendered.
 - Make the effect conspicuous once (large aperture, fast move) and look at a decoded frame, then dial it back.
-- `tests/check_bundle.py` holds known-answer tests for this path: brightness at 1/4/16 samples, motion-blur length against speed × shutter, depth of field by Laplacian variance, and 2D/3D cuts that never blend in the encoded film.
+- The source repository's `tests/check_bundle.py` holds known-answer tests for this path: brightness at 1/4/16 samples, motion-blur length against speed × shutter, depth of field by Laplacian variance, and 2D/3D cuts that never blend in the encoded film.
 
 ## Pitfalls
 
 - Set every time-dependent property in `update()` from `t`. Heavy deterministic precomputation in setup (a physics table) is fine; integrating from the previous frame is not.
-- Depth precision: with `near` 0.1 a screen 0.02 units in front of its bezel z-fought at 120 units away. Set `near`/`far` per rig, or separate coplanar surfaces.
+- Depth precision: with `near` 0.1 a screen 0.01 units in front of its bezel z-fought at 120 units away. Set `near`/`far` per rig, or separate coplanar surfaces.
 - Renderer settings such as `shadowMap.enabled` are shared by all three.js scenes in a film; set them consistently.
 - 2D overlays on a 3D shot are drawn once per frame at the frame-center time, without motion blur. Animate them gently, or move fast type into a 2D shot.
 
