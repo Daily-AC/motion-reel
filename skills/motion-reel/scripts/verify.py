@@ -93,7 +93,9 @@ if expected['audio'] and audio:
  db=[20*math.log10(max(e,top*.01,1e-9)) for e in env];shift=float(audio.get('start_time') or 0)-float(v.get('start_time') or 0);cuts=[];start=None
  for cue in [c for c in expected.get('cues',[]) if c['kind']=='cut']:
   c=round(cue['t']*fps);s={k:started(k) for k in range(c-4,c+5)}
-  vc=(0 if c<=0 else max(range(max(1,c-3),min(frames-1,c+3)+1),key=lambda k:s[k]-max(s[k-1],s[k+1])))/fps
+  kv=0 if c<=0 else max(range(max(1,c-3),min(frames-1,c+3)+1),key=lambda k:s[k]-max(s[k-1],s[k+1]));vc=kv/fps
+  # A shot boundary inside one continuous move changes no pixels (real cuts here start 60+ of 9216 at once): nothing to sync to.
+  if c>0 and s[kv]-max(s[kv-1],s[kv+1])<20:cuts.append({'cue':cue['t'],'shot':cue.get('shot'),'visual_cut':None,'audio_onset':None,'offset_ms':None,'note':'no picture change at this cue: continuous shot boundary, not checked'});continue
   lo=max(20,round((vc-spb/2-shift)*1000));hi=min(len(wide)-21,round((vc+spb/2-shift)*1000))
   k=max(range(lo,hi+1),key=lambda i:wide[i+20]-wide[i-20]) if hi>=lo else None
   j=max(range(max(3,k-60),min(len(env)-4,k+10)+1),key=lambda i:db[i+3]-db[i-3]) if k is not None else None
@@ -106,7 +108,7 @@ if expected['audio'] and audio:
   # ITU-R BT.1359 detectability: sound >45 ms before picture or >125 ms after it.
   if on is not None:o=row['offset_ms'];check(o<=45,f"sound leads picture by {o} ms at cut {cue['t']}s (limit 45 ms)");check(o>=-125,f"sound trails picture by {-o} ms at cut {cue['t']}s (limit 125 ms)")
  offs=[abs(c['offset_ms']) for c in cuts if c['offset_ms'] is not None]
- report['cut_sync']={'sign':'positive offset_ms = picture after sound','film_start':start,'cuts':cuts,'median_abs_ms':statistics.median(offs) if offs else None,'max_abs_ms':max(offs,default=None),'no_onset':[c['cue'] for c in cuts if c['audio_onset'] is None]}
+ report['cut_sync']={'sign':'positive offset_ms = picture after sound','film_start':start,'cuts':cuts,'median_abs_ms':statistics.median(offs) if offs else None,'max_abs_ms':max(offs,default=None),'no_onset':[c['cue'] for c in cuts if c['visual_cut'] is not None and c['audio_onset'] is None],'no_picture_change':[c['cue'] for c in cuts if c['visual_cut'] is None]}
  # Listening checklist: strongest candidate per concern, substituting the next one when it lands within 1 s of an earlier pick.
  r=subprocess.run(['ffmpeg','-hide_banner','-nostats','-i',str(video),'-map','0:a','-af','ebur128=framelog=info','-f','null','-'],capture_output=True,text=True,check=True).stderr
  moments=sorted(((float(m),float(t)) for t,m in re.findall(r't:\s*([\d.]+)\s.*?M:\s*(-?[\d.]+)',r) if float(m)>-70),reverse=True)
@@ -115,7 +117,7 @@ if expected['audio'] and audio:
   ('ending',[(max(0,duration-1.5),'final 1.5 s: does the ending resolve or fade cleanly, with no abrupt cut-off or tail click?')]),
   ('loudest',[(max(0,t-.4),f'#{i+1} loudest 400 ms (momentary {m:.1f} LUFS): clipping, crackle, pumping or audible limiting') for i,(m,t) in enumerate(moments)]),
   ('mono',[(w['t'],f"#{i+1} lowest L/R correlation ({w['correlation']:+.2f}): compare stereo with a mono speaker; elements going hollow or vanishing") for i,w in enumerate(sorted(loud,key=lambda w:w['correlation']))]),
-  ('sync',[(c['cue'],f"#{i+1} largest sync offset, cut {c['shot']} at {c['offset_ms']:+.0f} ms (+ = sound first): does the hit land on the picture change?") for i,c in enumerate(sorted([c for c in cuts if c['offset_ms'] is not None],key=lambda c:-abs(c['offset_ms'])))]+[(c['cue'],f"cut {c['shot']} has no low-band onset: is there a hit, and does it land on the picture change?") for c in cuts if c['offset_ms'] is None])]:
+  ('sync',[(c['cue'],f"#{i+1} largest sync offset, cut {c['shot']} at {c['offset_ms']:+.0f} ms (+ = sound first): does the hit land on the picture change?") for i,c in enumerate(sorted([c for c in cuts if c['offset_ms'] is not None],key=lambda c:-abs(c['offset_ms'])))]+[(c['cue'],f"cut {c['shot']} has no low-band onset: is there a hit, and does it land on the picture change?") for c in cuts if c['visual_cut'] is not None and c['offset_ms'] is None])]:
   chosen[name]=next((x for x in cands if all(abs(x[0]-t)>=1 for t,_ in chosen.values())),cands[0] if cands else (duration/2,f'no {name} candidate was measured: listen to the middle of the film'))
  report['listening_checklist']=[{'t':round(chosen[n][0],3),'listen_for':chosen[n][1]} for n in ['loudest','mono','sync','opening','ending']]
  report['listening_review']='NOT PERFORMED: an agent cannot hear. A human must audition the 5 listening_checklist timestamps on headphones (and once summed to mono) before sign-off; nothing here means it sounds good.'
@@ -123,7 +125,7 @@ report['technical_ok']=not errors
 out=a.output or video.with_suffix('.verify.json');out.parent.mkdir(parents=True,exist_ok=True);out.write_text(json.dumps(report,indent=2)+'\n')
 summary={'technical_ok':report['technical_ok'],'frames':report['decoded_video_frames'],'errors':errors,'warnings':report['warnings'],'report':str(out)}
 if 'mono' in report:summary['mono']={k:report['mono'][k] for k in ['loss_db','min_correlation']}|{'negative_windows':[w['t'] for w in report['mono']['negative_windows']]}
-if 'cut_sync' in report:s=report['cut_sync'];summary['cut_sync']={'offsets_ms':{str(c['cue']):c['offset_ms'] if c['offset_ms'] is not None else 'no_onset' for c in s['cuts']},'median_abs_ms':s['median_abs_ms'],'max_abs_ms':s['max_abs_ms'],'film_start_ms':s['film_start'] and s['film_start']['offset_ms']}
+if 'cut_sync' in report:s=report['cut_sync'];summary['cut_sync']={'offsets_ms':{str(c['cue']):c['offset_ms'] if c['offset_ms'] is not None else 'no_onset' if c['visual_cut'] is not None else 'no_picture_change' for c in s['cuts']},'median_abs_ms':s['median_abs_ms'],'max_abs_ms':s['max_abs_ms'],'film_start_ms':s['film_start'] and s['film_start']['offset_ms']}
 if 'listening_checklist' in report:summary['listening_checklist']=report['listening_checklist']
 summary['listening_review']=report['listening_review'];print(json.dumps(summary,indent=2))
 sys.exit(0 if not errors else 1)

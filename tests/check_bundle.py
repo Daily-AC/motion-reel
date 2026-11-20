@@ -149,10 +149,20 @@ class Bundle(unittest.TestCase):
    # Reference alone, as reference-films.md shows it: only --ref-start/--ref-end, no film interval and no report file.
    r=measure(str(t/'ref.mp4'),'--ref-start','1','--ref-end','2');self.assertEqual(r.returncode,0,r.stderr);d=json.loads(r.stdout)
    self.assertAlmostEqual(d['referenceSpanPx'][0],240,delta=2);self.assertFalse(d['comparisonPerformed'])
+ @unittest.skipUnless(__import__('shutil').which('ffmpeg') and __import__('shutil').which('uv'),'needs ffmpeg and uv')
+ def test_audio_gates_catch_a_held_pitch(self):
+  # 25 s of one D4 is the rejected score's drone; a new pitch every 2 s, 220-660 Hz, holds nothing long.
+  with tempfile.TemporaryDirectory() as tmp:
+   t=Path(tmp)
+   def tone(name,expr):subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i',f"aevalsrc='0.3*sin(2*PI*({expr})*t)':s=48000:d=25",'-ac','2',str(t/name)],check=True)
+   tone('drone.wav','293.66');tone('moving.wav','220+40*floor(t/2)')
+   def gates(name):return subprocess.run(['uv','run','-q','--with','numpy','--with','scipy','python',str(SKILL/'scripts/audio_gates.py'),str(t/name)],capture_output=True,text=True)
+   r=gates('drone.wav');self.assertEqual(r.returncode,1,r.stdout+r.stderr);self.assertIn('[FAIL] held pitch 150-400 Hz: longest 2',r.stdout);self.assertIn('D4',r.stdout)
+   r=gates('moving.wav');self.assertEqual(r.returncode,0,r.stdout+r.stderr);self.assertNotIn('FAIL',r.stdout)
  def test_new_project_carries_reference_tools(self):
   with tempfile.TemporaryDirectory() as tmp:
    dest=new_film(tmp)
-   for name in ['measure_frame.mjs','measure_motion.py','APACHE-2.0.txt']:self.assertTrue((dest/name).is_file(),name)
+   for name in ['measure_frame.mjs','measure_motion.py','audio_gates.py','APACHE-2.0.txt']:self.assertTrue((dest/name).is_file(),name)
    self.assertIn('refs/',(dest/'.gitignore').read_text())
  def test_licenses_and_asset_resolution(self):
   for p in ['LICENSE','assets/fonts/Inter-OFL.txt','assets/fonts/JetBrainsMono-OFL.txt','assets/fonts/InterVariable.woff2','assets/fonts/JetBrainsMono-Regular.ttf']:

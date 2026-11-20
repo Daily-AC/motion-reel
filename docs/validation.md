@@ -212,3 +212,21 @@ Synthetic clips (640×360, 30 fps, a 120 px `testsrc2` tile on black, x264 CRF 1
 `refs.py frames <id> --times …` writes one sheet of reference frames scaled to the film size (from `project.json`, or `--size`) with a grid every 100 film pixels, labelled every 200. Known answer, in `tests/check_bundle.py`: a 1280×720 reference with a white box at 100,100 (300×100) gridded at 1920×1080 shows the box at film 150,150 (450×150), grid lines at the right display columns, and `measure_frame.mjs --size 1920x1080` finds the same box within 2 px. On a live square catalog film three frames took 1.0 s; the caption states that the reference was stretched to 16:9, as the measurement stretches it.
 
 `measure_frame.mjs --pairs` returned one result per moment, each identical to the single-moment run, with labels kept; three moments of a live reference against the desk example took 0.45 s. The `_ok` remake flags now appear only with `--remake`; the measurements (`height_ratio`, `region_status`, `clipped`) are unchanged without it.
+
+### Held-drone gates (`audio_gates.py`)
+
+Calibrated on three real scores: a rejected synthesized score, the same score with its sub oscillator removed (also rejected; its owner still heard "a low drone under the whole film"), and an accepted lo-fi jazz score.
+
+| Score | Longest held pitch, 150–400 Hz | Longest held pitch, 40–150 Hz (level vs loudest) | Every 12 s has a 0.4 s rest 12 dB down |
+|---|---|---|---|
+| rejected | 30.7 s D4 (the whole film): fail | 14.3 s D2 (0 dB): fail | no |
+| rejected, no sub | 30.7 s D4: fail | 10.3 s D3 (0 dB): fail | yes |
+| accepted | 17.9 s F#4: pass | 7.5 s E2 (0 dB): pass | no |
+| licensed fairy-tale track (new film) | 11.3 s G4: pass | 6.1 s G1 (−25 dB): pass | no (5–17 s) |
+| synthesized score written from the section-table method (new film) | 12.1 s F#4: pass | 2.4 s G#1 (−3.5 dB): pass | yes |
+
+The rest check did not separate accepted from rejected, so it is not a gate. With three calibration scores, the 20 s and 8 s thresholds are provisional. Known answer in `check_bundle.py`: 25 s of a steady D4 fails with 24.4 s held; a new pitch every 2 s passes. Nobody's listening has been replaced: the last two rows have not been heard by anyone yet.
+
+### Continuous shot boundaries in `verify.py`
+
+A film whose six shots run as one continuous move (every boundary inside a slow camera drift) changed 0 of 9,216 pixels at each cue in the 128×72 cut detector; `verify.py` still timed a "visual cut" 3 frames early and gated the music against it, which forced the score to be shifted toward invisible boundaries. Cut cues in three other films started 63–6,315 pixels at once. A cue with fewer than 20 is now reported as `no_picture_change` and not checked; the same film then reported all five boundaries that way and stayed `technical_ok`.

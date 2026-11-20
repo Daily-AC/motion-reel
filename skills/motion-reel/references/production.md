@@ -101,3 +101,5 @@ Font paths differ by context: the installed skill stores them in `assets/fonts/`
 - When a shot zooms far in, divide line widths by the zoom factor, or a hairline (a horizon, a grid) becomes a thick banded stripe.
 - Homebrew's FFmpeg build lacks the `drawtext` filter; label frames with Pillow (`review.py`) instead.
 - Shell loops on macOS: `seq 1 0` counts down instead of producing nothing. Loop with `while` when the count can be zero.
+- `scenes.js` and `score.js` are pasted into the engine's own script. A top-level `const`, `let` or `function` that reuses an engine name (`mix`, `shade`, `seg`, `out`, `sc`, `E`, `F`, `W` and others) stops the page with "Identifier has already been declared". Prefix your helpers or keep them inside functions.
+- `sound.music.start` is the point in the track that plays at film time 0, so a track cannot enter later. To bring it in at 3.2 s, write a padded copy, `ffmpeg -i audio/track.mp3 -af adelay=3200:all=1 audio/track-late.wav`, ledger it with the same source and license, and set `start` to 0.

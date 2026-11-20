@@ -77,7 +77,7 @@ uv run --with pillow python review.py out/reel.mp4 --strip 7.65:9.20:20
 uv run --with pillow python review.py out/reel.mp4 --cues
 ```
 
-Read [review.md](references/review.md) for encoded-frame checks, motion strips, audio evidence and review handoffs. When a reference film was chosen, pick matching moments on a gridded sheet (`refs.py frames`), compare them with `node measure_frame.mjs` (brightness, detail, accent, title height) and `measure_motion.py` (travel, flags limp or excessive motion); both are in the project and explained in reference-films.md. `verify.py` also measures mono fold-down and each cut against its sound onset, and names five timestamps for a person to audition. Use `--scale 2` for a native 4K master when needed, after the direction survives review.
+Read [review.md](references/review.md) for encoded-frame checks, motion strips, audio evidence and review handoffs. When a reference film was chosen, pick matching moments on a gridded sheet (`refs.py frames`), compare them with `node measure_frame.mjs` (brightness, detail, accent, title height) and `measure_motion.py` (travel, flags limp or excessive motion); both are in the project and explained in reference-films.md. `verify.py` also measures mono fold-down and each cut against its sound onset, and names five timestamps for a person to audition; `audio_gates.py` catches a held drone in the score (music-and-sound.md). Use `--scale 2` for a native 4K master when needed, after the direction survives review.
 
 Separate **technical validity**, **visual acceptance**, and **audience response**. None proves the others. Do not claim aesthetic quality from frame counts or an agent's score.
 
