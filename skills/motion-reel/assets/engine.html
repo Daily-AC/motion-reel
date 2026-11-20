@@ -300,10 +300,10 @@ async function setupThree() {
   rt3Tex = R3.properties.get(rt3.texture).__webglTexture;
   if (!rt3Tex) throw new Error('three.js render target was not allocated');
   cam3 = new THREE.PerspectiveCamera(30, PW / PH, 0.1, 1000);
-  for (const s of SHOTS) if (s.three && !THREE_SCENES.has(s.scene)) {
+  for (const s of SHOTS) if (s.three && !THREE_SCENES.has(s.three)) {   // entries sharing a setup function share one set
     const sc3 = await s.three(THREE, R3);
     if (!sc3 || !sc3.scene || typeof sc3.rig !== 'function') throw new Error(`three.js scene "${s.scene}" must return {scene, rig}`);
-    THREE_SCENES.set(s.scene, sc3);
+    THREE_SCENES.set(s.three, sc3);
   }
   R3.resetState();
   oc = document.createElement('canvas'); oc.width = PW; oc.height = PH; octx = oc.getContext('2d');
@@ -314,7 +314,7 @@ void main(){ o = vec4(texture(tex, uv).rgb * w, 1.0); }`);
   pPost3 = prog(FS_POST3);
 }
 function renderFrame3(tf, sub) {
-  const k = shotAt(tf), s = SHOTS[k], sc3 = THREE_SCENES.get(s.scene), local = t => Math.max(0, (t - s.start) * s.rate);
+  const k = shotAt(tf), s = SHOTS[k], sc3 = THREE_SCENES.get(s.three), local = t => Math.max(0, (t - s.start) * s.rate);
   const uni = (p, n) => gl.getUniformLocation(p, n), quad = () => { gl.bindVertexArray(vao); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); gl.bindVertexArray(null); };
   TF = tf;
   if (sc3.frame) sc3.frame(local(tf), tf, s);                                   // once per frame: screen textures, numbers
