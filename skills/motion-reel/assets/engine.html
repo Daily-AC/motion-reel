@@ -6,6 +6,7 @@
 <style>
 @font-face{font-family:"Reel Sans";src:url("fonts/InterVariable.woff2");font-weight:100 900}
 @font-face{font-family:"JetBrains Mono";src:url("fonts/JetBrainsMono-Regular.ttf")}
+{{FONT_FACES}}
   html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
   body { display: grid; place-items: center; }
   canvas { width: 100vw; height: calc(100vw * 9 / 16); max-height: 100vh; max-width: calc(100vh * 16 / 9); }
@@ -532,7 +533,10 @@ window.addEventListener('error', e => post('/error', String(e.message) + ' @' + 
 window.addEventListener('unhandledrejection', e => post('/error', String(e.reason && e.reason.stack || e.reason)));
 (async () => {
   // Scenes may define async prepare(): load images (await img.decode()), build text masks. It runs once, after fonts, before any frame.
-  await Promise.all([document.fonts.load(F(500,14,MONO)),document.fonts.load(F(900,100,SANS))]);await document.fonts.ready; if(typeof prepare==='function')await prepare();
+  // Every declared face (the bundled Inter and JetBrains Mono, and project.json's fonts) loads before the first frame,
+  // whatever displayFont names; a face that cannot load stops the render with its family name.
+  await Promise.all([...[...document.fonts].map(f => f.load().catch(e => { throw new Error(`Font "${f.family}" failed to load: ${e.message}`); })), document.fonts.load(F(900, 100, SANS))]);
+  await document.fonts.ready; if(typeof prepare==='function')await prepare();
   if(SHOTS.some(s=>s.three))await setupThree();
   await post('/hello',JSON.stringify({width:PW,height:PH,fps:FPS,duration:DUR}));
   if (ACC_WARNING) await post('/log', ACC_WARNING);

@@ -45,7 +45,7 @@ node render.mjs stills 0,0.8,4.6,8.6,10.6,14.3 --samples 8
 
 The initializer copies a self-contained, editable 15-second example, fonts, renderer and verification tools. No API key or video-generation service is required. Read [production.md](references/production.md) before changing the project contract or diagnosing rendering.
 
-- `project.json` is the single source for copy, shot order, shot length (`beats`), cut impacts (`hit`), HUD labels and sound. `build.py` derives every time into `timeline.json`; a new shot list needs no engine edits. Author scenes in `scenes.js` as `draw(g, u, t, shot)` registered in `SCENE_LIBRARY`, and the synthesized score in `score.js` with cues as `SHOT('id')`. “Slow down the second shot” or “change this word” is a one-field edit in project.json.
+- `project.json` is the single source for copy, shot order, shot length (`beats`), cut impacts (`hit`), HUD labels, font files (`fonts`, each with its license) and sound. `build.py` derives every time into `timeline.json`; a new shot list needs no engine edits. Author scenes in `scenes.js` as `draw(g, u, t, shot)` registered in `SCENE_LIBRARY`, and the synthesized score in `score.js` with cues as `SHOT('id')`. “Slow down the second shot” or “change this word” is a one-field edit in project.json.
 - Change the demo's visual argument and relevant shot behavior for a new subject. Eight shots, blue and 128 BPM are examples, not requirements.
 - Use actual logo assets for an existing brand. Preserve silhouette and internal spacing while adding depth. Never present the starter's original generic symbol as an official logo.
 - Keep scene state a pure function of time. Seed randomness at initialization. Do not integrate from prior frames or fetch assets during capture.

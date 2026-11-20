@@ -8,7 +8,7 @@ macOS/Chrome is the tested reference environment. Browser discovery includes com
 
 ## Project files
 
-- `project.json`: identity, palette, canvas, FPS, tempo, the shot list with all on-screen copy, and sound.
+- `project.json`: identity, palette, canvas, FPS, tempo, the shot list with all on-screen copy, font files and sound.
 - `scenes.js`: scenes registered by name in `SCENE_LIBRARY`: Canvas2D drawing functions and three.js sets, plus their shared geometry.
 - `score.js`: synthesized score arrangement using the engine's synthesis primitives.
 - `symbol.js`: sampled contours for the example's original symbol.
@@ -71,7 +71,15 @@ Use 16 samples as a useful reference setting, not a quality law. For a static di
 
 Sound has three optional sources in `project.json`'s `sound`: the synthesized score (`synth`), one licensed track (`music`) and sound-effect files (`library` plus per-shot `sfx` cues). `"synth": false` with no music or effects renders a silent film with no audio stream. The page renders only the synthesized part; `render.mjs` places the track and each effect sample-accurately with FFmpeg from `timeline.json`, mixes without automatic normalization, then two-pass normalizes to about −14 LUFS. It measures the encoded AAC true peak, because encoding may overshoot the WAV, and lowers the gain until it is at most −1.2 dBTP. Preserve deliberate dynamics and report any gain adjustment. `build.py` refuses a track or effect without `source` and `license`. Details and the beat-grid workflow: music-and-sound.md.
 
-Inter Variable and JetBrains Mono are bundled with their OFL notices. The generic example uses English. For another writing system, supply a compatible licensed font, load it before capture and inspect actual glyphs. A Latin font file does not guarantee CJK support. `project.json`'s `displayFont` replaces the display family (for example `"PingFang SC, system-ui"`); a system font renders only on machines that have it. The Codex case study used macOS system CJK fonts; those fonts are not distributed here.
+Inter Variable (`"Reel Sans"`) and JetBrains Mono are bundled with their OFL notices. The generic example uses English. For another writing system, supply a compatible licensed font and inspect actual glyphs. A Latin font file does not guarantee CJK support. `project.json`'s `displayFont` replaces the display family that `F()` uses by default (for example `"PingFang SC, system-ui"`); a system font renders only on machines that have it. The Codex case study used macOS system CJK fonts; those fonts are not distributed here.
+
+To use a font file, put it in the project and declare it in `project.json`:
+
+```json
+"fonts": [{"family": "Noto Serif SC", "file": "fonts/NotoSerifSC-Bold.otf", "weight": 700, "license": "OFL-1.1, fonts/NotoSerifSC-OFL.txt"}]
+```
+
+`build.py` turns each entry into an `@font-face` rule. It refuses a missing file, a file outside the project folder and an entry without `license`, as it does for audio; `weight` (a number, or a range such as `"100 900"` for a variable font) and `style` are optional. The page loads every declared face, and the two bundled ones, before `prepare()` and the first frame, whatever `displayFont` names; a face that cannot load stops the render with its family name. Draw with it as `F(700, 64, '"Noto Serif SC"')`, or make it the display face with `"displayFont": "\"Noto Serif SC\", serif"`. Keep the license text beside the file, and do not commit or share a font file you have no license for.
 
 Font paths differ by context: the installed skill stores them in `assets/fonts/`; the initializer copies them into the generated project's `fonts/`. CSS in that project references the latter.
 
@@ -87,7 +95,7 @@ Font paths differ by context: the installed skill stores them in `assets/fonts/`
 
 ## Pitfalls
 
-- Fonts on macOS Chrome: in canvas, `system-ui` is the variable-weight SF Pro, while `-apple-system`, `ui-monospace` and `"SF Mono"` fall back to a default face. Load a bundled or licensed font file, and check the glyphs in a still.
+- Fonts on macOS Chrome: in canvas, `system-ui` is the variable-weight SF Pro, while `-apple-system`, `ui-monospace` and `"SF Mono"` fall back to a default face. Use a bundled font or declare a licensed file in `fonts`, and check the glyphs in a still.
 - `strokeText` on a variable font draws the glyphs' internal overlapping contours. For outlined type, stroke wide and then `fillText` the interior in the base color.
 - Grain costs bitrate: post grain of 0.014 at CRF 17 made a 15 s 1080p film about 15 MB. Keep grain subtle (the engine uses 0.005) and do not encode with `-tune grain`.
 - When a shot zooms far in, divide line widths by the zoom factor, or a hairline (a horizon, a grid) becomes a thick banded stripe.

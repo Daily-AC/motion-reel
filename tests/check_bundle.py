@@ -1,6 +1,6 @@
 """Meaningful packaging checks. Real rendering and visual review remain separate."""
 from pathlib import Path
-import json,subprocess,tempfile,unittest,sys
+import json,shutil,subprocess,tempfile,unittest,sys
 ROOT=Path(__file__).resolve().parents[1];SKILL=ROOT/'skills/motion-reel'
 def new_film(tmp):
  dest=Path(tmp)/'film';subprocess.run([sys.executable,str(SKILL/'scripts/new_project.py'),str(dest),'--brand','TEST'],check=True,capture_output=True);return dest
@@ -42,6 +42,14 @@ class Bundle(unittest.TestCase):
    r,_=build(dest,music);self.assertNotEqual(r.returncode,0);self.assertIn('license',r.stderr)
    def sfx(c):c['sound']['music']=None;c['sound']['library']={'pop':{'file':'track.wav','license':'CC0'}};c['shots'][0]['sfx']=[{'name':'pop'}]
    r,_=build(dest,sfx);self.assertNotEqual(r.returncode,0);self.assertIn('source',r.stderr)
+ def test_project_fonts_need_a_file_and_a_license(self):
+  # A declared font becomes an @font-face rule in the page; a missing file or license is refused, like audio.
+  with tempfile.TemporaryDirectory() as tmp:
+   dest=new_film(tmp);face={'family':'Test Display','file':'fonts/InterVariable.woff2','weight':'100 900','license':'OFL-1.1 (fonts/Inter-OFL.txt)'}
+   r,_=build(dest,lambda c:c.update(fonts=[dict(face)]));self.assertEqual(r.returncode,0,r.stderr)
+   self.assertIn('@font-face{font-family:"Test Display";src:url("fonts/InterVariable.woff2");font-weight:100 900}',(dest/'reel.html').read_text())
+   r,_=build(dest,lambda c:c.update(fonts=[{**face,'file':'fonts/Missing.woff2'}]));self.assertNotEqual(r.returncode,0);self.assertIn('not found',r.stderr)
+   r,_=build(dest,lambda c:c.update(fonts=[{k:v for k,v in face.items() if k!='license'}]));self.assertNotEqual(r.returncode,0);self.assertIn('license',r.stderr)
  def test_numbers_on_screen_need_a_quoted_source(self):
   with tempfile.TemporaryDirectory() as tmp:
    dest=new_film(tmp);(dest/'notes.md').write_text('# Bench\nCold start took **2.7x** as long.\n')
@@ -214,4 +222,29 @@ class ThreeScenes(unittest.TestCase):
   mix=lambda a,b:round(255*((15*linear(a)+linear(b))/16)**(1/2.4)) if a or b else 0
   blend=bytes(c for _ in range(self.W*self.H) for c in (mix(255,0),mix(48,80),mix(0,255)))
   self.assertGreater(strays(blend,self.W,colors['2d-a'],box),0)
+@unittest.skipUnless(__import__('shutil').which('ffmpeg') and __import__('shutil').which('node'),'needs ffmpeg and node')
+class Fonts(unittest.TestCase):
+ def test_declared_and_bundled_fonts_load_before_frame_zero(self):
+  # A copy of the bundled Inter declared as "Test Display", with displayFont set to something else (the case that used to drop
+  # the Inter preload). Frame 0 draws one word in "Reel Sans", in "Test Display" and in a family that does not exist, in three
+  # 90 px bands. Both real families must already be loaded: their glyph masks match each other and differ from the fallback's.
+  W,H=480,270
+  with tempfile.TemporaryDirectory() as tmp:
+   dest=new_film(tmp);shutil.copy2(dest/'fonts/InterVariable.woff2',dest/'fonts/TestDisplay.woff2')  # its own URL, loaded on its own
+   (dest/'scenes.js').write_text("""function words(g) {
+  g.fillStyle = '#fff'; g.fillRect(-200, -200, W + 400, H + 400); g.fillStyle = '#000'; g.textBaseline = 'middle';
+  ['"Reel Sans"', '"Test Display"', '"No Such Family"'].forEach((f, i) => { g.font = `700 44px ${f}`; g.fillText('Hamburgefonstiv', 16, 45 + 90 * i); });
+}
+const SCENE_LIBRARY = { words: { draw: words, beats: 2 } };
+""")
+   def edit(c):c.update(width=W,height=H,displayFont='serif',fonts=[{'family':'Test Display','file':'fonts/TestDisplay.woff2','weight':'100 900','license':'OFL-1.1'}],shots=[{'scene':'words','beats':2,'hud':None}],sound={'synth':False,'music':None,'library':{}})
+   r,_=build(dest,edit);self.assertEqual(r.returncode,0,r.stderr)
+   r=subprocess.run(['node','render.mjs','stills','0','--samples','1'],cwd=dest,capture_output=True,text=True)
+   if r.returncode and 'WebGL2' in r.stderr+r.stdout:self.skipTest('browser cannot render')
+   self.assertEqual(r.returncode,0,r.stderr)
+   y=luma(decode(dest/'review/stills/0.png',W,H));band=lambda i:[v<128 for v in y[90*i*W:90*(i+1)*W]]
+   inter,alias,fallback=band(0),band(1),band(2);ink=sum(inter)
+   self.assertGreater(ink,1000,'no text drawn')
+   self.assertLess(sum(a!=b for a,b in zip(inter,alias)),ink*.02,'"Test Display" is not the Inter file it declares')
+   self.assertGreater(sum(a!=b for a,b in zip(inter,fallback)),ink*.2,'"Reel Sans" was not loaded before frame 0')
 if __name__=='__main__':unittest.main()

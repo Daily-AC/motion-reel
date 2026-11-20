@@ -6,6 +6,7 @@ This script derives every time from it once and writes timeline.json for the pag
 from pathlib import Path
 from array import array
 import json, math, re, subprocess, sys
+from urllib.parse import quote
 root=Path(__file__).resolve().parent
 cfg=json.loads((root/'project.json').read_text())
 def fail(message):raise SystemExit(f'project.json: {message}')
@@ -88,6 +89,22 @@ if facts is not None:
    for y in x.values():yield from strings(y)
  unsourced=sorted({(n,s) for s in [*strings(shown),*strings([t['copy'] for t in timeline_shots])] for n in nums(s) if n not in quoted})
  if unsourced:fail('numbers on screen without a quoted source in facts: '+'; '.join(f'{n} in "{s}"' for n,s in unsourced))
+# Font files: each becomes an @font-face rule that the page loads before the first frame. Like audio, each needs a license.
+fonts=cfg.get('fonts') or []
+if not isinstance(fonts,list):fail('fonts must be a list of {family, file, license, weight?, style?}')
+faces=[]
+for i,f in enumerate(fonts):
+ if not isinstance(f,dict):fail(f'fonts[{i}] must be an object')
+ for key in ['family','file','license']:
+  if not isinstance(f.get(key),str) or not f[key].strip():fail(f'fonts[{i}].{key} is required'+(': record the font\'s license' if key=='license' else ''))
+ if re.search(r'["\\<>\n]',f['family']):fail(f'fonts[{i}].family must not contain quotes, backslashes, angle brackets or line breaks')
+ path=(root/f['file']).resolve()
+ if not path.is_file():fail(f'fonts[{i}].file not found: {f["file"]}')
+ if not path.is_relative_to(root):fail(f'fonts[{i}].file must be inside the project folder, where the renderer can serve it: {f["file"]}')
+ weight,style=f.get('weight'),f.get('style')
+ if weight is not None and not re.fullmatch(r'\d{1,4}( \d{1,4})?',str(weight)):fail(f'fonts[{i}].weight must be a number such as 400, or a range such as "100 900" for a variable font')
+ if style is not None and style not in ('normal','italic','oblique'):fail(f'fonts[{i}].style must be "normal", "italic" or "oblique"')
+ faces.append(f'@font-face{{font-family:"{f["family"]}";src:url("{quote(path.relative_to(root).as_posix())}")'+(f';font-weight:{weight}' if weight is not None else '')+(f';font-style:{style}' if style else '')+'}')
 music=sound.get('music')
 if music is not None:
  path=ledger('sound.music',music)
@@ -114,7 +131,7 @@ for s in timeline_shots:
 timeline={'fps':fps,'spb':spb,'sceneBeat':60/scene_bpm,'beats':beat,'musicalDuration':musical,'duration':duration,'frames':frames,'maxCutLagSeconds':cut_error,'shots':timeline_shots,'sound':{'synth':sound.get('synth',True),'music':music,'sfx':cues}}
 (root/'timeline.json').write_text(json.dumps(timeline,indent=1)+'\n')
 html=(root/'engine.html').read_text()
-values={'CONFIG_JSON':json.dumps(cfg,ensure_ascii=True).replace('<','\\u003c'),'TIMELINE_JSON':json.dumps(timeline,ensure_ascii=True).replace('<','\\u003c'),'SYMBOL_JS':(root/'symbol.js').read_text(),'SCENES_JS':(root/'scenes.js').read_text(),'SCORE_JS':(root/'score.js').read_text()}
+values={'FONT_FACES':'\n'.join(faces),'CONFIG_JSON':json.dumps(cfg,ensure_ascii=True).replace('<','\\u003c'),'TIMELINE_JSON':json.dumps(timeline,ensure_ascii=True).replace('<','\\u003c'),'SYMBOL_JS':(root/'symbol.js').read_text(),'SCENES_JS':(root/'scenes.js').read_text(),'SCORE_JS':(root/'score.js').read_text()}
 for name,value in values.items():
  token='{{'+name+'}}'
  if html.count(token)!=1:raise SystemExit(f'Expected exactly one {token} in engine.html')

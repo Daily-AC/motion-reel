@@ -91,7 +91,7 @@ server=http.createServer(async(req,res)=>{
   if(req.method==='GET'){
    const file=resolve(ROOT,'.'+decodeURIComponent(url.pathname==='/'?'/reel.html':url.pathname));
    if(!file.startsWith(ROOT+sep)){res.writeHead(403).end();return}
-   const MIME={'.html':'text/html; charset=utf-8','.js':'text/javascript','.json':'application/json','.woff2':'font/woff2','.ttf':'font/ttf','.otf':'font/otf','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.gif':'image/gif','.svg':'image/svg+xml'};
+   const MIME={'.html':'text/html; charset=utf-8','.js':'text/javascript','.json':'application/json','.woff2':'font/woff2','.woff':'font/woff','.ttf':'font/ttf','.otf':'font/otf','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.gif':'image/gif','.svg':'image/svg+xml'};
    const mime=MIME[file.slice(file.lastIndexOf('.')).toLowerCase()]||'application/octet-stream';
    try{res.setHeader('Content-Type',mime);res.end(readFileSync(file))}catch{res.writeHead(404).end()}return;
   }
