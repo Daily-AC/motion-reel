@@ -76,10 +76,10 @@ Inter Variable (`"Reel Sans"`) and JetBrains Mono are bundled with their OFL not
 To use a font file, put it in the project and declare it in `project.json`:
 
 ```json
-"fonts": [{"family": "Noto Serif SC", "file": "fonts/NotoSerifSC-Bold.otf", "weight": 700, "license": "OFL-1.1, fonts/NotoSerifSC-OFL.txt"}]
+"fonts": [{"family": "Noto Serif SC", "file": "fonts/NotoSerifSC-Bold.otf", "weight": 700, "source": "https://github.com/notofonts/noto-cjk", "license": "OFL-1.1, fonts/NotoSerifSC-OFL.txt"}]
 ```
 
-`build.py` turns each entry into an `@font-face` rule. It refuses a missing file, a file outside the project folder and an entry without `license`, as it does for audio; `weight` (a number, or a range such as `"100 900"` for a variable font) and `style` are optional. The page loads every declared face, and the two bundled ones, before `prepare()` and the first frame, whatever `displayFont` names; a face that cannot load stops the render with its family name. Draw with it as `F(700, 64, '"Noto Serif SC"')`, or make it the display face with `"displayFont": "\"Noto Serif SC\", serif"`. Keep the license text beside the file, and do not commit or share a font file you have no license for.
+`build.py` turns each entry into an `@font-face` rule. It refuses a missing file, a file outside the project folder and an entry without `source` or `license`, as it does for audio; `weight` (a number, or a range such as `"100 900"` for a variable font) and `style` are optional. The page loads every declared face, and the two bundled ones, before `prepare()` and the first frame, whatever `displayFont` names; a face that cannot load stops the render with its family name. Draw with it as `F(700, 64, '"Noto Serif SC"')`, or make it the display face with `"displayFont": "\"Noto Serif SC\", serif"`. Keep the license text beside the file, and do not commit or share a font file you have no license for.
 
 Font paths differ by context: the installed skill stores them in `assets/fonts/`; the initializer copies them into the generated project's `fonts/`. CSS in that project references the latter.
 

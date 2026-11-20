@@ -91,12 +91,12 @@ if facts is not None:
  if unsourced:fail('numbers on screen without a quoted source in facts: '+'; '.join(f'{n} in "{s}"' for n,s in unsourced))
 # Font files: each becomes an @font-face rule that the page loads before the first frame. Like audio, each needs a license.
 fonts=cfg.get('fonts') or []
-if not isinstance(fonts,list):fail('fonts must be a list of {family, file, license, weight?, style?}')
+if not isinstance(fonts,list):fail('fonts must be a list of {family, file, source, license, weight?, style?}')
 faces=[]
 for i,f in enumerate(fonts):
  if not isinstance(f,dict):fail(f'fonts[{i}] must be an object')
- for key in ['family','file','license']:
-  if not isinstance(f.get(key),str) or not f[key].strip():fail(f'fonts[{i}].{key} is required'+(': record the font\'s license' if key=='license' else ''))
+ for key in ['family','file','source','license']:
+  if not isinstance(f.get(key),str) or not f[key].strip():fail(f'fonts[{i}].{key} is required'+(': record where the font came from and its license' if key in ('source','license') else ''))
  if re.search(r'["\\<>\n]',f['family']):fail(f'fonts[{i}].family must not contain quotes, backslashes, angle brackets or line breaks')
  path=(root/f['file']).resolve()
  if not path.is_file():fail(f'fonts[{i}].file not found: {f["file"]}')

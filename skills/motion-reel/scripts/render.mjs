@@ -29,7 +29,7 @@ if(!['render','stills','preview'].includes(mode))throw new Error('Use doctor, st
 run(process.env.PYTHON||'python3',[join(ROOT,'build.py')]);run(process.execPath,['--check',join(ROOT,'check.js')]);
 const cfg=JSON.parse(readFileSync(join(ROOT,'project.json'),'utf8')),TL=JSON.parse(readFileSync(join(ROOT,'timeline.json'),'utf8'));
 const scale=Number(opts.scale||1),samples=Number(opts.samples||16),duration=TL.duration,fps=cfg.fps;
-if(!Number.isInteger(scale)||scale<1||scale>4||!Number.isInteger(samples)||samples<1||samples>64)throw new Error('scale must be1–4; samples1–64');
+if(!Number.isInteger(scale)||scale<1||scale>4||!Number.isInteger(samples)||samples<1||samples>256)throw new Error('scale must be1–4; samples1–256');
 const W=cfg.width*scale,H=cfg.height*scale,frameBytes=W*H*4,expectedFrames=TL.frames;
 const output=resolve(ROOT,opts.out||'out/reel.mp4');
 if(!output.toLowerCase().endsWith('.mp4'))throw new Error('Output must end in .mp4');

@@ -42,14 +42,15 @@ class Bundle(unittest.TestCase):
    r,_=build(dest,music);self.assertNotEqual(r.returncode,0);self.assertIn('license',r.stderr)
    def sfx(c):c['sound']['music']=None;c['sound']['library']={'pop':{'file':'track.wav','license':'CC0'}};c['shots'][0]['sfx']=[{'name':'pop'}]
    r,_=build(dest,sfx);self.assertNotEqual(r.returncode,0);self.assertIn('source',r.stderr)
- def test_project_fonts_need_a_file_and_a_license(self):
+ def test_project_fonts_need_a_file_a_source_and_a_license(self):
   # A declared font becomes an @font-face rule in the page; a missing file or license is refused, like audio.
   with tempfile.TemporaryDirectory() as tmp:
-   dest=new_film(tmp);face={'family':'Test Display','file':'fonts/InterVariable.woff2','weight':'100 900','license':'OFL-1.1 (fonts/Inter-OFL.txt)'}
+   dest=new_film(tmp);face={'family':'Test Display','file':'fonts/InterVariable.woff2','weight':'100 900','source':'bundled Inter','license':'OFL-1.1 (fonts/Inter-OFL.txt)'}
    r,_=build(dest,lambda c:c.update(fonts=[dict(face)]));self.assertEqual(r.returncode,0,r.stderr)
    self.assertIn('@font-face{font-family:"Test Display";src:url("fonts/InterVariable.woff2");font-weight:100 900}',(dest/'reel.html').read_text())
    r,_=build(dest,lambda c:c.update(fonts=[{**face,'file':'fonts/Missing.woff2'}]));self.assertNotEqual(r.returncode,0);self.assertIn('not found',r.stderr)
    r,_=build(dest,lambda c:c.update(fonts=[{k:v for k,v in face.items() if k!='license'}]));self.assertNotEqual(r.returncode,0);self.assertIn('license',r.stderr)
+   r,_=build(dest,lambda c:c.update(fonts=[{k:v for k,v in face.items() if k!='source'}]));self.assertNotEqual(r.returncode,0);self.assertIn('source',r.stderr)
  def test_numbers_on_screen_need_a_quoted_source(self):
   with tempfile.TemporaryDirectory() as tmp:
    dest=new_film(tmp);(dest/'notes.md').write_text('# Bench\nCold start took **2.7x** as long.\n')
@@ -285,7 +286,7 @@ class Fonts(unittest.TestCase):
 }
 const SCENE_LIBRARY = { words: { draw: words, beats: 2 } };
 """)
-   def edit(c):c.update(width=W,height=H,displayFont='serif',fonts=[{'family':'Test Display','file':'fonts/TestDisplay.woff2','weight':'100 900','license':'OFL-1.1'}],shots=[{'scene':'words','beats':2,'hud':None}],sound={'synth':False,'music':None,'library':{}})
+   def edit(c):c.update(width=W,height=H,displayFont='serif',fonts=[{'family':'Test Display','file':'fonts/TestDisplay.woff2','weight':'100 900','source':'bundled Inter','license':'OFL-1.1'}],shots=[{'scene':'words','beats':2,'hud':None}],sound={'synth':False,'music':None,'library':{}})
    r,_=build(dest,edit);self.assertEqual(r.returncode,0,r.stderr)
    r=subprocess.run(['node','render.mjs','stills','0','--samples','1'],cwd=dest,capture_output=True,text=True)
    if r.returncode and 'WebGL2' in r.stderr+r.stdout:self.skipTest('browser cannot render')
