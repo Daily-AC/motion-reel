@@ -72,6 +72,31 @@ class Bundle(unittest.TestCase):
    r=refs('search','--kind','3d','--aspect','square');self.assertIn('30000000',r.stdout);self.assertNotIn('10000000',r.stdout)
    self.assertEqual(json.loads(refs('show','20000000').stdout)['brand'],'Beta');self.assertNotEqual(refs('show','motion-').returncode,0)
  @unittest.skipUnless(__import__('shutil').which('ffmpeg'),'needs ffmpeg')
+ def test_reference_get_retries_and_cleans_up(self):
+  # A local host that drops the first connection without a response: get retries and records the file's fps in meta.json.
+  # One that always drops it: a one-line error, no traceback, and no empty refs/<id>/ folder left behind.
+  import http.server,threading
+  with tempfile.TemporaryDirectory() as tmp:
+   t=Path(tmp);subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','testsrc2=s=64x64:r=25','-t','1','-c:v','libx264','-pix_fmt','yuv420p',str(t/'v.mp4')],check=True)
+   body=(t/'v.mp4').read_bytes();drops={'/flaky.mp4':1,'/dead.mp4':10**6}
+   class Host(http.server.BaseHTTPRequestHandler):
+    def log_message(self,*a):pass
+    def do_GET(self):
+     if drops.get(self.path,0)>0:drops[self.path]-=1;self.close_connection=True;return
+     self.send_response(200);self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
+   srv=http.server.ThreadingHTTPServer(('127.0.0.1',0),Host);threading.Thread(target=srv.serve_forever,daemon=True).start()
+   url=f'http://127.0.0.1:{srv.server_address[1]}'
+   entry=lambda i,path:{'id':f'motion-{i}0000000-aaaa','order':1,'brand':'Acme','name':path,'video':url+path,'motion_doc':None,'original':''}
+   (t/'motion-reel').mkdir();(t/'motion-reel/refs-index.json').write_text(json.dumps({'source':'fixture','synced':'today','entries':[entry('a','/flaky.mp4'),entry('b','/dead.mp4')]}))
+   env={**__import__('os').environ,'XDG_CACHE_HOME':tmp,'no_proxy':'127.0.0.1','NO_PROXY':'127.0.0.1'}
+   def get(i):return subprocess.run([sys.executable,str(SKILL/'scripts/refs.py'),'get',i,'--dest',str(t/'refs')],capture_output=True,text=True,env=env)
+   try:
+    r=get('a0000000');self.assertEqual(r.returncode,0,r.stderr);self.assertEqual(drops['/flaky.mp4'],0)
+    self.assertEqual((t/'refs/a0000000/reference.mp4').read_bytes(),body);self.assertEqual(json.loads((t/'refs/a0000000/meta.json').read_text())['fps'],25)
+    r=get('b0000000');self.assertNotEqual(r.returncode,0);self.assertNotIn('Traceback',r.stderr);self.assertEqual(len(r.stderr.strip().splitlines()),1,r.stderr)
+    self.assertIn('download failed',r.stderr);self.assertFalse((t/'refs/b0000000').exists());self.assertEqual(drops['/dead.mp4'],10**6-4)
+   finally:srv.shutdown()
+ @unittest.skipUnless(__import__('shutil').which('ffmpeg'),'needs ffmpeg')
  def test_frame_measure_known_answer(self):
   # A gray field with a white box: mean luma and box height have known values, and a shorter box must fail height.
   with tempfile.TemporaryDirectory() as tmp:

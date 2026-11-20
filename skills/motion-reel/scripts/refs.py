@@ -12,7 +12,7 @@ is cached; the videos stay with their owners and are downloaded on request for p
   python3 refs.py get 0053d84c --dest refs       # reference.mp4 + motion.md + meta.json
 """
 from pathlib import Path
-import argparse, io, json, os, shutil, subprocess, sys, time, urllib.request, zipfile
+import argparse, http.client, io, json, os, shutil, subprocess, sys, time, urllib.error, urllib.request, zipfile
 
 CATALOG_POINTER = 'https://raw.githubusercontent.com/nexu-io/openmotion/main/library/templates/catalog/catalog.json'
 CATALOG_FALLBACK = 'https://r.open-design.ai/resources/1500c9af-186b-457f-b74d-a58113f657d8/channels/default/main.json'
@@ -21,16 +21,31 @@ INDEX = CACHE / 'refs-index.json'
 KINDS = {'3d': '三维动效', 'ui': '界面动效', 'graphic': '图形动效', 'type': '文字动效', 'live': '实拍剪辑'}
 
 
-def fetch(url, timeout=60):
-    request = urllib.request.Request(url, headers={'User-Agent': 'motion-reel-refs'})
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return response.read()
+class DownloadError(Exception):
+    pass
+
+
+def fetch(url, timeout=60, attempts=4):
+    """Download with retries: catalog hosts drop TLS connections now and then, and a second try usually works."""
+    for attempt in range(attempts):
+        try:
+            request = urllib.request.Request(url, headers={'User-Agent': 'motion-reel-refs'})
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                return response.read()
+        except urllib.error.HTTPError as error:
+            if error.code < 500 or attempt == attempts - 1:
+                raise DownloadError(f'{url}: HTTP {error.code}') from None
+        except (OSError, http.client.HTTPException) as error:  # SSL, connection reset, timeout, truncated body
+            if attempt == attempts - 1:
+                reason = str(getattr(error, 'reason', None) or error) or type(error).__name__
+                raise DownloadError(f'{url}: {reason} ({attempts} attempts)') from None
+        time.sleep(.5 * 2 ** attempt)
 
 
 def sync(url=None):
     if not url:
         try:
-            url = json.loads(fetch(CATALOG_POINTER))['source']['url']
+            url = json.loads(fetch(CATALOG_POINTER, attempts=1))['source']['url']
         except Exception as error:  # the pointer is a convenience; the published channel is the data
             print(f'catalog pointer unavailable ({error}); using the known channel', file=sys.stderr)
             url = CATALOG_FALLBACK
@@ -137,6 +152,15 @@ def get(args):
     entry = find(load()['entries'], args.id)
     folder = args.dest.expanduser().resolve() / handle(entry)
     folder.mkdir(parents=True, exist_ok=True)
+    try:
+        download(entry, folder)
+    except DownloadError:
+        if not any(folder.iterdir()):
+            folder.rmdir()
+        raise
+
+
+def download(entry, folder):
     result = {'folder': str(folder)}
     video = folder / 'reference.mp4'
     if not video.exists() or video.stat().st_size == 0:
@@ -158,13 +182,16 @@ def get(args):
             doc.write_bytes(data)
     if doc.exists():
         result['motion_doc'] = str(doc)
-    (folder / 'meta.json').write_text(json.dumps(entry, ensure_ascii=False, indent=1) + '\n')
+    meta = dict(entry)
     if shutil.which('ffprobe'):
         probe = json.loads(subprocess.check_output(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries',
                                                     'stream=width,height,r_frame_rate:format=duration', '-of', 'json', str(video)]))
         stream = probe['streams'][0]
-        result.update(width=stream['width'], height=stream['height'], fps=stream['r_frame_rate'],
+        num, den = (int(v) for v in stream['r_frame_rate'].split('/'))
+        meta['fps'] = round(num / den, 3) if den else None  # of the downloaded file; some catalog videos are 12 fps previews
+        result.update(width=stream['width'], height=stream['height'], fps=meta['fps'],
                       seconds=round(float(probe['format']['duration']), 3))
+    (folder / 'meta.json').write_text(json.dumps(meta, ensure_ascii=False, indent=1) + '\n')
     result['original'] = entry['original'] or None
     result['note'] = 'Third-party film for private study. Keep it out of git and published material.'
     print(json.dumps(result, ensure_ascii=False, indent=1))
@@ -190,10 +217,13 @@ def main():
     p.add_argument('id')
     p.add_argument('--dest', type=Path, default=Path('refs'))
     args = parser.parse_args()
-    if args.command == 'sync':
-        sync(args.url)
-    else:
-        {'search': search, 'show': show, 'get': get}[args.command](args)
+    try:
+        if args.command == 'sync':
+            sync(args.url)
+        else:
+            {'search': search, 'show': show, 'get': get}[args.command](args)
+    except DownloadError as error:
+        raise SystemExit(f'refs.py {args.command}: download failed: {error}')
 
 
 if __name__ == '__main__':

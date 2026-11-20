@@ -14,9 +14,11 @@ python3 <skill>/scripts/refs.py get d2c98a37 --dest refs               # inside 
 python3 <skill>/scripts/refs.py sync                                    # refresh the index
 ```
 
-`--kind` takes `3d`, `ui`, `graphic`, `type` or `live`. `get` writes `refs/<id>/reference.mp4`, `meta.json` (including the original post link) and, when published, `motion.md` with a stage table, plus `timeline.json` and a few keyframes.
+`--kind` takes `3d`, `ui`, `graphic`, `type` or `live`. Titles and summaries are Chinese first, with English where the catalog has it: if an English phrase falls back to any-word matches, try the Chinese term (模型发布 for a model launch, 产品发布 for a product launch, 标志 for a logo) or `--brand`.
 
-Treat the catalog text as a lead, not evidence. Summaries and stage boundaries were written by the catalog's authors from the videos and are marked approximate; read the film itself. Some catalog videos are compressed previews (12 fps occurs), so check `fps` in the `get` output before measuring motion and prefer the original post for close study. The catalog's HTML "demos" are rough sketches that differ visibly from their references; `get` leaves them out.
+`get` writes `refs/<id>/reference.mp4`, `meta.json` (including the original post link and the downloaded file's `fps`) and, when published, `motion.md` with a stage table, plus `timeline.json` and a few keyframes. It retries a dropped download three times with backoff; when it gives up it prints one line and leaves no empty folder.
+
+Treat the catalog text as a lead, not evidence. Summaries and stage boundaries were written by the catalog's authors from the videos and are marked approximate; read the film itself. Some catalog videos are compressed previews (12 fps occurs), so check `fps` (printed by `get`, kept in `meta.json`) before measuring motion and prefer the original post for close study. The catalog's HTML "demos" are rough sketches that differ visibly from their references; `get` leaves them out.
 
 These films belong to their owners. Keep `refs/` in the film project, out of git, out of any published repository or release, and never reuse their logos, footage or type as assets.
 
