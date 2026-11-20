@@ -59,7 +59,7 @@ The renderer saves a metadata file next to the MP4, including dimensions, durati
 
 All scene state comes from `(time, frameCenterTime)`. Frozen seeded geometry is allowed; prior-frame accumulation, unseeded random calls, hover state and render-time network access are not. The compositor chooses the shot from the frame center so shutter sampling cannot blend across a hard cut. Clamp negative local time near a cut.
 
-Motion blur averages radiance, not display-encoded RGB: convert to linear light, accumulate, then encode the result. The tested engine uses RGBA16F. RGBA32F with unsupported linear sampling previously produced black output on Metal. Check framebuffer completeness and shader status; browser exceptions alone miss some GPU failures.
+Motion blur averages radiance, not display-encoded RGB: convert to linear light, accumulate, then encode the result. The engine accumulates in RGBA32F when the browser can blend and linearly sample float32 targets (`EXT_float_blend` and `OES_texture_float_linear`, both present in Chrome on Metal), otherwise in RGBA16F with a line in the render log. Half floats round every addition: a flat color drifted by up to 1.7 code values at 64 samples. Without `OES_texture_float_linear` a linearly sampled RGBA32F texture reads black on Metal, which is why the engine requires both before choosing it. Check framebuffer completeness and shader status; browser exceptions alone miss some GPU failures.
 
 Raw `readPixels` rows are vertically inverted. The encoder flips them, explicitly converts RGB to BT.709 limited-range YUV, and stamps color metadata into the stream. A tagged file is insufficient if the actual matrix conversion was wrong.
 

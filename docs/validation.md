@@ -164,3 +164,33 @@ The engine then gained optional bloom for three.js shots, the same dual-filter c
 The remaining 1–2% is the original's stronger vignette and shadow grade, which were not ported. Bloom off stays off: the starter's stills remain byte-identical to main, and all 420 frames of the mixed example render identically with the bloom code present and unset.
 
 Not covered: Linux and Windows rendering of the 3D path, 4K renders of three.js shots, and any listening of the example's sound.
+
+## Fixes from a field test (2026-11-20)
+
+A fresh agent made a 32 s launch film with the skill and logged every point of friction. The five costliest were fixed and measured here. Observed on an Apple M4 Pro, macOS 26.6, Chrome 157 (Metal), Node 22.23.4, FFmpeg 9.0.2.
+
+### Float32 accumulation for match cuts
+
+The accumulator was RGBA16F, and half floats round every addition. On a flat ivory (`#F1EDE7`) 2D shot cut to a three.js background of the same color (480×270, per-channel means in the vignette-free centre of the last 2D and first 3D frame):
+
+| Samples | RGBA16F: 2D / 3D off the design, step at the cut (stills) | Encoded step, off the design | RGBA32F: 2D / 3D off the design, step (stills) | Encoded |
+|---|---|---|---|---|
+| 8 | 0.23 / 0.13, 0.17 | 0.00, 0.00 | 0.00 / 0.02, 0.03 | 0.00, 0.00 |
+| 16 | 0.68 / 0.26, 0.53 | 1.18, 1.87 | 0.00 / 0.02, 0.03 | 0.00, 0.00 |
+| 32 | 0.88 / 0.41, 0.67 | 0.15, 2.00 | 0.00 / 0.02, 0.03 | 0.00, 0.00 |
+| 64 | 1.71 / 1.02, 0.69 | 0.15, 2.00 | 0.00 / 0.02, 0.03 | 0.00, 0.00 |
+
+The engine now accumulates in RGBA32F when the browser has `EXT_float_blend` and `OES_texture_float_linear` (Chrome on Metal has both), and otherwise falls back to RGBA16F with a line in the render log. Forcing the fallback reproduced the RGBA16F numbers above exactly and printed the line. The remaining 0.02 on the 3D side is the half-float target three.js renders into, quantized once per subframe rather than once per addition. A known-answer test in `tests/check_bundle.py` checks both sides within 0.5 code values of the design and of each other at 8, 16, 32 and 64 samples; against the previous engine it fails at 16 samples (2D side 0.68 off).
+
+The desk example's match cut at 2.0 s (frames 119 | 120, 1080p), largest per-channel step on the paper, card and accent colors:
+
+| Samples | RGBA16F stills | RGBA16F encoded | RGBA32F stills | RGBA32F encoded |
+|---|---|---|---|---|
+| 8 | 0.08 | | 0.06 | |
+| 16 | 0.26 | 0.42 | 0.06 | 0.06 |
+| 32 | 0.18 | | 0.06 | |
+| 64 | 0.44 | 0.76 | 0.06 | 0.06 |
+
+With RGBA16F both sides of the desk cut also darkened as samples rose: at 64 samples the paper sat up to 1.65 code values (2D) and 1.38 (3D) below its RGBA32F value. With RGBA32F every sample count gives the same means.
+
+2D-only films are not byte-identical, and that is the fix working: half-float rounding had darkened them. On the starter's stills at 0, 0.8, 4.6, 8.6, 10.6 and 14.3 s, 3.2–12.8% of channel values changed at 8 samples and 5.9–19.5% at 16, every change exactly one code value and upward (mean +0.03 to +0.20, PSNR 55–63 dB against the previous engine); on the flat ivory shot the new value is the designed color exactly. Stills remain byte-identical from run to run. The full 16-sample starter render passed `verify.py` (900 frames, no errors or warnings). Render time, one run each: starter 35.1 s before and 37.5 s after; desk 11.0 → 11.9 s at 16 samples and 18.8 → 20.7 s at 64.

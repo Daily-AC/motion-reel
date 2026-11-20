@@ -49,7 +49,7 @@ The initializer copies a self-contained, editable 15-second example, fonts, rend
 - Change the demo's visual argument and relevant shot behavior for a new subject. Eight shots, blue and 128 BPM are examples, not requirements.
 - Use actual logo assets for an existing brand. Preserve silhouette and internal spacing while adding depth. Never present the starter's original generic symbol as an official logo.
 - Keep scene state a pure function of time. Seed randomness at initialization. Do not integrate from prior frames or fetch assets during capture.
-- Select the shot from the frame-center time. All shutter samples of that frame belong to that shot. The compositor averages samples in linear light using RGBA16F.
+- Select the shot from the frame-center time. All shutter samples of that frame belong to that shot. The compositor averages samples in linear light in an RGBA32F accumulator (RGBA16F, with a line in the render log, where the browser cannot blend float32 targets).
 - Share impact timing between sound and movement. Use a sonic motif sparingly. Loudness checks cannot judge musical taste.
 - For a licensed track, read [music-and-sound.md](references/music-and-sound.md). `beats.py` measures the grid against the track's kicks and writes `bpm` and `sound.music`; sound effects are ledgered files in `sound.library`. Look at the beat plot before trusting the grid.
 - When a shot needs volume, a performing character, real light and shadow or depth of field, make it a three.js scene (`{three: setup, beats}`) and read [three-d.md](references/three-d.md). It mixes with Canvas2D shots in one film and shares the timeline, cuts, shutter, post and capture; a per-shot rig sets lens, focus, aperture and exposure.

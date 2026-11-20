@@ -177,6 +177,20 @@ class ThreeScenes(unittest.TestCase):
   self.assertAlmostEqual(d1,d0,delta=1,msg='the emitter footprint changed');self.assertAlmostEqual(i0,.02,delta=.002,msg='halo without bloom')
   # a measurable halo: the inner ring gains at least five times the background radiance, more than the outer ring gains
   self.assertGreaterEqual(i1-i0,5*.02,f'no halo: inner ring {i0:.4f} -> {i1:.4f}');self.assertGreater(i1-i0,o1-o0,'halo does not fall off')
+ def test_match_cut_keeps_designed_color_at_any_sample_count(self):
+  # A flat ivory 2D shot cut to a three.js background of the same color, the last 2D and first 3D frame measured as per-channel
+  # means in the vignette-free centre. Half-float accumulation drifted the sides apart (0.53-0.69 code values at 16-64 samples)
+  # and off the design (1.71 at 64); both sides must stay within 0.5 of #F1EDE7 and of each other at 8, 16, 32 and 64 samples.
+  want=(241,237,231);film=self.project([{'scene':'solid2d','id':'2d','beats':2,'hud':None,'copy':{'color':'#F1EDE7'}},{'scene':'solid3d','id':'3d','beats':2,'hud':None,'copy':{'color':'#F1EDE7'}}])
+  def centre(raw):
+   x0,y0,x1,y1=180,90,300,180;rows=[raw[(r*self.W+x0)*3:(r*self.W+x1)*3] for r in range(y0,y1)]
+   return [sum(sum(row[c::3]) for row in rows)/((x1-x0)*(y1-y0)) for c in range(3)]
+  for n in (8,16,32,64):
+   r=subprocess.run(['node','render.mjs','stills','0.9833333333333333,1','--samples',str(n)],cwd=film,capture_output=True,text=True);self.assertEqual(r.returncode,0,r.stderr)
+   self.assertNotIn('RGBA16F',r.stdout,'this browser has no blendable, filterable RGBA32F target, so the engine fell back to half floats')
+   a,b=(centre(decode(film/'review/stills'/f'{t}.png',self.W,self.H)) for t in ('0.9833333333333333','1'))
+   for side,m in (('2D',a),('3D',b)):self.assertLessEqual(max(abs(x-w) for x,w in zip(m,want)),.5,f'{n} samples: {side} side {m} is off #F1EDE7')
+   self.assertLessEqual(max(abs(x-y) for x,y in zip(a,b)),.5,f'{n} samples: the cut steps from {a} to {b}')
  def test_cuts_between_2d_and_3d_never_blend(self):
   # Cuts at 1.02 s and 2.02 s fall inside the shutters of frames 61 and 121. Every subframe of a frame belongs to the shot
   # at its centre, so frames 60-61 | 62-63 and 120-121 | 122-123 hold only their own shot's color in the encoded film.

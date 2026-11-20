@@ -193,10 +193,20 @@ const mkTex = (ifmt, fmt, type, w = PW, h = PH) => {
   return t;
 };
 const texScene = mkTex(gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE);
-const texAcc = mkTex(gl.RGBA16F, gl.RGBA, gl.HALF_FLOAT);
-const fbo = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texAcc, 0);
-if(gl.checkFramebufferStatus(gl.FRAMEBUFFER)!==gl.FRAMEBUFFER_COMPLETE)throw new Error('Accumulation framebuffer incomplete');
+// The accumulator is RGBA32F where float32 targets can be blended and linearly sampled (unsupported linear sampling reads
+// black on Metal). Half floats round every addition: a flat color drifted by up to 1.7 code values at 64 samples, differently
+// on the 2D and 3D paths, which broke match cuts. Without the extensions the engine falls back to RGBA16F and says so.
+const fbo = gl.createFramebuffer();
+function accumulator(full) {
+  const t = full ? mkTex(gl.RGBA32F, gl.RGBA, gl.FLOAT) : mkTex(gl.RGBA16F, gl.RGBA, gl.HALF_FLOAT);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+  if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE) return t;
+  gl.deleteTexture(t); if (full) return null; throw new Error('Accumulation framebuffer incomplete');
+}
+const acc32 = gl.getExtension('EXT_float_blend') && gl.getExtension('OES_texture_float_linear') ? accumulator(true) : null;
+const texAcc = acc32 || accumulator(false);
+const ACC_WARNING = acc32 ? '' : 'Accumulating in RGBA16F (no blendable, filterable RGBA32F target): flat colors can drift by up to about 2 code values above 16 samples, which can show at 2D/3D match cuts.';
+if (ACC_WARNING) console.warn(ACC_WARNING);
 const halton = (i, b) => { let f = 1, r = 0; while (i > 0) { f /= b; r += f * (i % b); i = Math.floor(i / b); } return r; };
 
 let TF = 0;
@@ -525,6 +535,7 @@ window.addEventListener('unhandledrejection', e => post('/error', String(e.reaso
   await Promise.all([document.fonts.load(F(500,14,MONO)),document.fonts.load(F(900,100,SANS))]);await document.fonts.ready; if(typeof prepare==='function')await prepare();
   if(SHOTS.some(s=>s.three))await setupThree();
   await post('/hello',JSON.stringify({width:PW,height:PH,fps:FPS,duration:DUR}));
+  if (ACC_WARNING) await post('/log', ACC_WARNING);
   if (MODE === 'still') {
     for (const t of (Q.get('ts') || '0').split(',')) { renderFrame(+t); await post('/still?t=' + t, readFrame()); }
     await post('/done');
