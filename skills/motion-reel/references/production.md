@@ -2,17 +2,18 @@
 
 ## Dependencies and support
 
-Core: Node.js 22+, Python 3.10+, FFmpeg/ffprobe, and a local Chrome/Chromium executable with WebGL2 and floating-point render targets. The renderer uses Node built-ins; it does not need a package install, account or API key. Contact sheets additionally use Pillow (`uv run --with pillow python review.py ...`); beat analysis uses librosa and matplotlib (`uv run --with librosa --with matplotlib python beats.py ...`).
+Core: Node.js 22+, Python 3.10+, FFmpeg/ffprobe, and a local Chrome/Chromium executable with WebGL2 and floating-point render targets. The renderer uses Node built-ins; it does not need a package install, account or API key. three.js r186 is vendored in `vendor/three/` (MIT) and loaded only by films with a three.js scene. Contact sheets additionally use Pillow (`uv run --with pillow python review.py ...`); beat analysis uses librosa and matplotlib (`uv run --with librosa --with matplotlib python beats.py ...`).
 
 macOS/Chrome is the tested reference environment. Browser discovery includes common Linux and Windows locations, but those platforms require their own real render validation. Use `CHROME_PATH` for an explicit executable. Do not assume GPU capabilities or render speed from the operating-system name.
 
 ## Project files
 
 - `project.json`: identity, palette, canvas, FPS, tempo, the shot list with all on-screen copy, and sound.
-- `scenes.js`: pure drawing functions plus their shared geometry, registered by name in `SCENE_LIBRARY`.
+- `scenes.js`: scenes registered by name in `SCENE_LIBRARY`: Canvas2D drawing functions and three.js sets, plus their shared geometry.
 - `score.js`: synthesized score arrangement using the engine's synthesis primitives.
 - `symbol.js`: sampled contours for the example's original symbol.
-- `engine.html`: compositor, instrument library and page-driven capture protocol. It has no film-specific timing.
+- `engine.html`: compositor, three.js bridge, instrument library and page-driven capture protocol. It has no film-specific timing.
+- `vendor/three/`: the three.js module build and its license.
 - `build.py`: validates project.json, derives `timeline.json` and combines the sources into `reel.html` and `check.js`.
 - `render.mjs`: local server, owned Chrome process, encoding, sound mixing, normalization and muxing.
 - `beats.py`: measures a music track's beat grid and writes it into project.json (see music-and-sound.md).
@@ -23,6 +24,10 @@ macOS/Chrome is the tested reference environment. Browser discovery includes com
 Each entry of `shots` is `{scene, beats, label, hit, hud, copy, sfx}`; `id` defaults to `scene` and must be unique when a scene repeats. `beats` is real musical length at `bpm`; shots start where the previous one ends. Film duration is the beat total, rounded to whole frames. `hit` drives camera shake, chromatic aberration and the template's cut impact; `hud` is `"paper"`, `"ink"` or `null` (hidden). Every word a scene draws lives in its shot's `copy` or in the top-level brand fields, so a copy change never touches code.
 
 A scene is `draw(g, u, t, shot)`. `u` is its own clock: 0 at the cut, reaching its native length (`SCENE_LIBRARY[name].beats × BEAT`) at the next cut. `t` is film time, for ambient motion that should continue across cuts. `BEAT`/`BAR` are the scene clock, set by `sceneBpm` (the tempo the scenes were choreographed at); `SPB` is real seconds per beat. Giving a shot more beats stretches its scene uniformly, so its handoff still completes at the cut. Integer multiples keep in-scene beat events on the beat; a shot stretched by a fraction keeps its cut on the beat but not its interior accents. When the music's tempo differs from `sceneBpm`, every scene stretches by the same ratio.
+
+A scene can instead be a three.js set, `{three: setup, beats}`, whose setup returns the scene, a lens rig and per-subframe posing; read [three-d.md](three-d.md). It shares the timeline, cuts, shutter, post and capture with Canvas2D shots.
+
+`TF` is the frame-center time. Anything that must not ghost under motion blur, above all numbers drawn on screen, reads `TF` (for a shot's own clock, `Math.max(0,(TF-shot.start)*shot.rate)`), not the subframe time.
 
 Score cues use `SHOT('id')` (seconds) and the shot's `startBeat`; they follow reordering and stretching. Scenes that share material across shots (the template's particle word) read it with `copyFor(sceneName)`.
 
@@ -58,6 +63,8 @@ Motion blur averages radiance, not display-encoded RGB: convert to linear light,
 
 Raw `readPixels` rows are vertically inverted. The encoder flips them, explicitly converts RGB to BT.709 limited-range YUV, and stamps color metadata into the stream. A tagged file is insufficient if the actual matrix conversion was wrong.
 
+A three.js shot adds each subframe's linear radiance from a half-float target to the same accumulator, then the post applies the rig's exposure and either clips (designed colors come out exact) or applies a highlight shoulder. Each subframe also gets a lens sample and a light sample for depth of field and soft shadows; three-d.md has the details and checks.
+
 Use 16 samples as a useful reference setting, not a quality law. For a static diagnostic frame, changing sample count should not materially change mean brightness. For moving edges, inspect whether blur appears and whether the subject remains readable. High FPS, 4K and more samples do not fix weak direction.
 
 ## Audio and fonts
@@ -77,3 +84,12 @@ Font paths differ by context: the installed skill stores them in `assets/fonts/`
 - Slow rendering: reduce samples or scale for drafts. Do not trade away final clarity without saying so.
 - Platform mismatch: use explicit browser paths and verify real output. Do not describe an untested fallback as supported.
 - FFmpeg printed a packet-size probe warning in the tested environment even though full decode and frame counts passed. Preserve the diagnostic, then inspect the actual file; do not suppress failures or infer corruption from that warning alone.
+
+## Pitfalls
+
+- Fonts on macOS Chrome: in canvas, `system-ui` is the variable-weight SF Pro, while `-apple-system`, `ui-monospace` and `"SF Mono"` fall back to a default face. Load a bundled or licensed font file, and check the glyphs in a still.
+- `strokeText` on a variable font draws the glyphs' internal overlapping contours. For outlined type, stroke wide and then `fillText` the interior in the base color.
+- Grain costs bitrate: post grain of 0.014 at CRF 17 made a 15 s 1080p film about 15 MB. Keep grain subtle (the engine uses 0.005) and do not encode with `-tune grain`.
+- When a shot zooms far in, divide line widths by the zoom factor, or a hairline (a horizon, a grid) becomes a thick banded stripe.
+- Homebrew's FFmpeg build lacks the `drawtext` filter; label frames with Pillow (`review.py`) instead.
+- Shell loops on macOS: `seq 1 0` counts down instead of producing nothing. Loop with `while` when the count can be zero.

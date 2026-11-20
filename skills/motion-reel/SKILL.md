@@ -1,6 +1,6 @@
 ---
 name: motion-reel
-description: Direct and render polished short motion-graphics reels, brand films, kinetic showcases and short explainers in code. Use for a punchy product or identity reel; an explainer of a flow, a number change or a new feature built from a project's real content; cutting a reel to a licensed music track; or when existing animation feels static, sparse, incoherent, or unfinished. Includes deterministic rendering, synthesized or licensed sound with measured sync, and source-checked on-screen numbers, plus a searchable catalog of commercial reference films with side-by-side frame and motion measurement. Not a live-action generator or long-form narrated-video workflow.
+description: Direct and render polished short motion-graphics reels, brand films, kinetic showcases, short explainers and short 3D narrative films in code, with Canvas2D and three.js shots on one timeline. Use for a punchy product or identity reel; an explainer of a flow, a number change or a new feature built from a project's real content; a three.js film with a character, a lit set or depth of field; cutting a reel to a licensed music track; a vertical cut for Douyin, TikTok, Reels or Shorts; or when existing animation feels static, sparse, incoherent, or unfinished. Includes deterministic rendering, synthesized or licensed sound with measured sync, and source-checked on-screen numbers, plus a searchable catalog of commercial reference films with side-by-side frame and motion measurement. Not a live-action generator or long-form narrated-video workflow.
 ---
 
 # Motion Reel
@@ -52,7 +52,8 @@ The initializer copies a self-contained, editable 15-second example, fonts, rend
 - Select the shot from the frame-center time. All shutter samples of that frame belong to that shot. The compositor averages samples in linear light using RGBA16F.
 - Share impact timing between sound and movement. Use a sonic motif sparingly. Loudness checks cannot judge musical taste.
 - For a licensed track, read [music-and-sound.md](references/music-and-sound.md). `beats.py` measures the grid against the track's kicks and writes `bpm` and `sound.music`; sound effects are ledgered files in `sound.library`. Look at the beat plot before trusting the grid.
-- Recompose for another aspect ratio; a landscape crop is not an authored portrait cut.
+- When a shot needs volume, a performing character, real light and shadow or depth of field, make it a three.js scene (`{three: setup, beats}`) and read [three-d.md](references/three-d.md). It mixes with Canvas2D shots in one film and shares the timeline, cuts, shutter, post and capture; a per-shot rig sets lens, focus, aperture and exposure.
+- Recompose for another aspect ratio; a landscape crop is not an authored portrait cut. For Douyin, TikTok, Reels or Shorts, read [feed-publishing.md](references/feed-publishing.md): hook, safe zones, frame 0 as the cover.
 
 ## Iterate on the actual defect
 

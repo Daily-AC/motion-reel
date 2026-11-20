@@ -27,6 +27,8 @@ Example request:
 - A concise directing skill, with separate guides for composition, production and review.
 - An editable 15-second starter with 3D shapes, kinetic type, particles, spatial interfaces and original synthesized audio.
 - Linear-light temporal sampling, a shared beat grid, seeded geometry and a deterministic frame-capture pipeline.
+- three.js scenes beside Canvas2D ones on the same timeline. Each subframe jitters shutter time, lens and light, so motion blur, depth of field, antialiasing and soft shadows come from one accumulator; a per-shot lens rig, screen close-ups that keep designed colors, and portrait framing derived from the landscape storyboard. three.js r186 is vendored; nothing to install.
+- Guides for short-video feeds (an authored vertical cut, the hook, safe zones, covers) and the rendering pitfalls earlier films ran into.
 - One `project.json` for copy, shot order, shot length and sound: “slow down the second shot” or “change this word” is a one-field edit, and every cut, impact and score cue follows.
 - Licensed music: `beats.py` measures a track's grid against its kicks (librosa alone can lock onto the off-beat or drift), and the renderer places the track and ledgered sound-effect files sample-accurately.
 - Short explainers from a project's real content: a method for finding what is worth animating, storyboards with `path:line` sources, and a build check that refuses on-screen numbers without a quoted source.
@@ -50,6 +52,8 @@ node render.mjs render --out out/nova.mp4 --samples 16
 python3 verify.py out/nova.mp4
 uv run --with pillow python review.py out/nova.mp4 --strip 7.65:9.20:20
 ```
+
+A mixed 2D/three.js example: `python3 examples/desk/create.py ./work/desk`, then render it the same way.
 
 Use `--scale 2` for a native 4K master. `node render.mjs preview` serves a silent interactive preview; stop it when finished. Generated projects are self-contained and contain the source, fonts and tools needed to rebuild.
 

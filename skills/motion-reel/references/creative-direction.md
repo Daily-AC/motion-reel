@@ -14,9 +14,21 @@ An entrance followed by a static hold is still mostly a static slide. Use a legi
 
 Vary motion grammar. Useful contrasts include rigid versus elastic, orbital versus linear, clustered versus dispersed, front view versus oblique volume, and dense movement versus a stable identity hold. Avoid applying the same ease-out tween to every object.
 
+Give each shot one or two craft details that show the hand of a motion designer: a spring curve with visible overshoot, area-preserving squash and stretch, onion-skin trails, an animator's spacing dots, selection handles on a shape, glyph metrics drawn beside type. More than two per shot compete with the action.
+
 Plan at least one meaningful change of viewing scale when the brief wants impact. A camera can enter a letter counter, reveal a structure from a close-up, or pass through a particle field. The endpoint must be recognizable; motion blur cannot rescue an unreadable action.
 
+## Build the film on the beat grid
+
+Derive the duration from tempo and bars rather than picking seconds: 128 BPM × 8 bars is exactly 15 s. A useful default is one shot per bar, cut on the downbeat, with in-shot events on beats, half-beats or sixteenths. The shot list's `beats` field encodes this; a licensed track supplies its own grid (music-and-sound.md).
+
+## Open finished, close on the opening
+
+Frame 0 is a finished picture: it is the poster in a feed and the first impression everywhere else. Do not grow it from black or type it on at the very start; begin from a complete state and move from there, for example pulling back from a close-up. Have sound at frame 0 too. Let the opening element pay off at the end (a ball knocked away in the first shot returns to become the logo), which is what viewers remember.
+
 ## Treat cuts as relationships
+
+Hand every cut over through one element: a line that opens into the next frame, a camera that flies into a letter's counter, an array that floods the frame, particles that settle into a grid. The element can be as plain as a shared position or color across a hard cut; a pause on empty black carries nothing.
 
 A cut can be a change in material rather than a change in subject: outline to ribbon, ribbon samples to particles, particles to solid blocks. Share the points and camera at the boundary whenever practical. Similar silhouettes created independently tend to jump.
 
@@ -40,7 +52,7 @@ Keep some negative space. Typography needs room to establish scale; the closing 
 
 ## Give the film one identity
 
-Derive colors and shape language from verified brand assets when present. A correct logo pasted into an unrelated palette can still feel unofficial. Use a small material family: for example porcelain faces, blue-lit edges and a dark reflective setting. Use local, licensed fonts with appropriate weights; test actual strings and scripts.
+Derive colors and shape language from verified brand assets when present. Use one accent color. When a brand's logo appears, switch the whole film's palette to the brand's: a correct logo pasted into an unrelated palette can still feel unofficial. Use a small material family: for example porcelain faces, blue-lit edges and a dark reflective setting. Use local, licensed fonts with appropriate weights; test actual strings and scripts.
 
 Use one recurring motif to link scenes: a line, orbit, aperture, shard, light or tone. Its role may evolve. It should carry attention or meaning, not merely recur as a watermark.
 
