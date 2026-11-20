@@ -154,6 +154,29 @@ class ThreeScenes(unittest.TestCase):
   self.assertTrue(near(n0,n0b) and near(f0,f0b),'aperture 0 must not depend on focus')
   self.assertTrue(near(n_near,n0),f'in-focus near card changed: {n_near:.0f} vs {n0:.0f}');self.assertLessEqual(f_near,f0/3,f'far card not defocused: {f_near:.0f} vs {f0:.0f}')
   self.assertTrue(near(f_far,f0),f'in-focus far card changed: {f_far:.0f} vs {f0:.0f}');self.assertLessEqual(n_far,n0/3,f'near card not defocused: {n_far:.0f} vs {n0:.0f}')
+ def test_bloom(self):
+  # A 10 px disc at the frame centre on linear 0.02, rendered at the same times with bloom 0 and 0.3 (threshold 1). Below the
+  # threshold (0.6) bloom changes nothing. Above it (8.0) the disc stays saturated while the ring 14-60 px from its centre
+  # gains radiance that falls off with distance.
+  frames={}
+  for b in (0,.3):
+   film=self.project([{'scene':'glow','id':'dim','beats':2,'hud':None,'copy':{'level':.6,'bloom':b}},{'scene':'glow','id':'hot','beats':2,'hud':None,'copy':{'level':8,'bloom':b}}])
+   r=subprocess.run(['node','render.mjs','stills','0.5,1.5','--samples','16'],cwd=film,capture_output=True,text=True);self.assertEqual(r.returncode,0,r.stderr)
+   for t in ('0.5','1.5'):frames[(b,t)]=decode(film/'review/stills'/f'{t}.png',self.W,self.H)
+  def zones(raw):
+   y=luma(raw);cx,cy=self.W//2,self.H//2;disc=[];inner=[];outer=[]
+   for r in range(cy-60,cy+61):
+    for c in range(cx-60,cx+61):
+     d=((r-cy+.5)**2+(c-cx+.5)**2)**.5;v=y[r*self.W+c]
+     if d<=7:disc.append(v)
+     elif 14<=d<30:inner.append(linear(v))
+     elif 30<=d<=60:outer.append(linear(v))
+   return sum(disc)/len(disc),sum(inner)/len(inner),sum(outer)/len(outer)
+  self.assertEqual(frames[(0,'0.5')],frames[(.3,'0.5')],'bloom changed a frame with nothing above its threshold')
+  (d0,i0,o0),(d1,i1,o1)=zones(frames[(0,'1.5')]),zones(frames[(.3,'1.5')])
+  self.assertAlmostEqual(d1,d0,delta=1,msg='the emitter footprint changed');self.assertAlmostEqual(i0,.02,delta=.002,msg='halo without bloom')
+  # a measurable halo: the inner ring gains at least five times the background radiance, more than the outer ring gains
+  self.assertGreaterEqual(i1-i0,5*.02,f'no halo: inner ring {i0:.4f} -> {i1:.4f}');self.assertGreater(i1-i0,o1-o0,'halo does not fall off')
  def test_cuts_between_2d_and_3d_never_blend(self):
   # Cuts at 1.02 s and 2.02 s fall inside the shutters of frames 61 and 121. Every subframe of a frame belongs to the shot
   # at its centre, so frames 60-61 | 62-63 and 120-121 | 122-123 hold only their own shot's color in the encoded film.

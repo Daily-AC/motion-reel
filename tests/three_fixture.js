@@ -49,4 +49,13 @@ async function dof(THREE) {
   return { scene, rig: (u, t, shot) => ({ position: [0, 0, 0], target: [0, 0, -1], focus: [0, 0, -shot.copy.focus], aperture: shot.copy.aperture, fov: 30 }) };
 }
 
-const SCENE_LIBRARY = { solid2d: { draw: solid2d, beats: 2 }, solid3d: { three: solid3d, beats: 2 }, lit: { three: lit, beats: 2 }, mover: { three: mover, beats: 2 }, dof: { three: dof, beats: 2 } };
+// A small unlit disc of radiance copy.level on a dark field (linear 0.02), with bloom copy.bloom above threshold 1.
+async function glow(THREE) {
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0.02, 0.02, 0.02);
+  const disc = new THREE.Mesh(new THREE.CircleGeometry(0.2, 64), new THREE.MeshBasicMaterial({ color: new THREE.Color() }));
+  scene.add(disc);
+  return { scene, rig: (u, t, shot) => ({ position: [0, 0, 10], target: [0, 0, 0], fov: 30, bloom: shot.copy.bloom, bloomThreshold: 1 }),
+    update(u, t, shot) { disc.material.color.setRGB(shot.copy.level, shot.copy.level, shot.copy.level, THREE.LinearSRGBColorSpace); } };
+}
+
+const SCENE_LIBRARY = { solid2d: { draw: solid2d, beats: 2 }, solid3d: { three: solid3d, beats: 2 }, lit: { three: lit, beats: 2 }, mover: { three: mover, beats: 2 }, dof: { three: dof, beats: 2 }, glow: { three: glow, beats: 2 } };

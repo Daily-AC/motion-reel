@@ -186,9 +186,9 @@ const vao = gl.createVertexArray(); gl.bindVertexArray(vao);   // the quad's own
 const vb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vb);
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
 gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
-const mkTex = (ifmt, fmt, type) => {
+const mkTex = (ifmt, fmt, type, w = PW, h = PH) => {
   const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
-  gl.texImage2D(gl.TEXTURE_2D, 0, ifmt, PW, PH, 0, fmt, type, null);
+  gl.texImage2D(gl.TEXTURE_2D, 0, ifmt, w, h, 0, fmt, type, null);
   for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
   return t;
 };
@@ -246,11 +246,13 @@ function readFrame() { gl.readPixels(0, 0, PW, PH, gl.RGBA, gl.UNSIGNED_BYTE, pi
 //  linear radiance to the same accumulator as a Canvas2D shot, with the same shutter time, subpixel jitter and shake,
 //  plus a lens sample (depth of field) and a light sample (soft shadows) for the scene to use. The post pass applies the
 //  rig's exposure, then clips like a Canvas2D shot (designed colors come out exact) or, with shoulder: true, rolls off
-//  highlights with Khronos PBR Neutral's shoulder, which leaves linear values below 0.76 untouched.
+//  highlights with Khronos PBR Neutral's shoulder, which leaves linear values below 0.76 untouched. With bloom > 0 the rig
+//  also adds a glow from radiance above bloomThreshold, before exposure.
 // ============================================================================================
 let THREE = null, R3, rt3, rt3Tex, cam3, oc, octx, texOverlay, pAcc3, pPost3;
 const THREE_SCENES = new Map(), DESIGN = 16 / 9, GOLDEN = 2.399963229728653;
-// Rig helpers. A rig is (u, t, shot) => {position, target, fov, focus, aperture, exposure, shoulder, vw, near, far, up}: fov is the
+// Rig helpers. A rig is (u, t, shot) => {position, target, fov, focus, aperture, exposure, shoulder, bloom, bloomThreshold, vw, near,
+// far, up}: fov is the
 // vertical field of view of a 16:9 frame; on a narrower canvas the shot keeps vw of that width (default 0.62) and grows taller.
 function frameRect(center, normal, width, fov = 30, up = [0, 1, 0]) {   // screen close-up: `width` fills the frame width, straight on
   const d = width / 2 / (Math.tan(fov * Math.PI / 360) * DESIGN);
@@ -289,11 +291,47 @@ function aim(cam, L, smp, sx, sy) {
   cam.setViewOffset(PW, PH, -lx / (dist * tanH) * PW / 2 - smp.jitter[0] - sx * SCALE, ly / (dist * tanV) * PH / 2 - smp.jitter[1] - sy * SCALE, PW, PH);
   cam.updateProjectionMatrix();
 }
-const postSource3 = () => FS_POST.replace('uniform vec2 res;', 'uniform vec2 res; uniform sampler2D overlay; uniform float exposure, shoulderOn, overlayOn;\n' +
+const postSource3 = () => FS_POST.replace('uniform vec2 res;', 'uniform vec2 res; uniform sampler2D overlay, bloomTex; uniform float exposure, shoulderOn, overlayOn, bloomAmt;\n' +
   'vec3 shoulder(vec3 c){ float p = max(c.r, max(c.g, c.b)); if (p < 0.76) return c; float n = 1.0 - 0.0576 / (p - 0.52); c *= n / p; return mix(c, vec3(n), 1.0 - 1.0 / (0.15 * (p - n) + 1.0)); }\n' +
   'vec3 srgb(vec3 c){ c = clamp(c, 0.0, 1.0); return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }')
-  .replace('c = pow(max(c, 0.0), vec3(1.0 / 2.2));', 'c = max(c, 0.0) * exposure; if (shoulderOn > 0.5) c = shoulder(c); c = srgb(c);\n  if (overlayOn > 0.5) { vec4 ov = texture(overlay, uv); c = mix(c, ov.rgb, ov.a); }');
-const FS_POST3 = postSource3(); if (!FS_POST3.includes('overlayOn > 0.5') || !FS_POST3.includes('uniform float exposure')) throw new Error('3D post shader was not derived');
+  .replace('c = pow(max(c, 0.0), vec3(1.0 / 2.2));', 'if (bloomAmt > 0.0) c += texture(bloomTex, uv).rgb * bloomAmt;\n  c = max(c, 0.0) * exposure; if (shoulderOn > 0.5) c = shoulder(c); c = srgb(c);\n  if (overlayOn > 0.5) { vec4 ov = texture(overlay, uv); c = mix(c, ov.rgb, ov.a); }');
+const FS_POST3 = postSource3(); if (!FS_POST3.includes('overlayOn > 0.5') || !FS_POST3.includes('bloomAmt > 0.0')) throw new Error('3D post shader was not derived');
+// Bloom (dual filter): threshold the HDR accumulation into half size, halve it down a chain, then add each level back up.
+// The chain has one more level per doubling above 1920 px, so the glow keeps its reach at 4K. Allocated on first use.
+let BLOOM = null;
+function bloomSetup() {
+  const levels = [], n = 6 + Math.max(0, Math.round(Math.log2(Math.max(PW, PH) / 1920)));
+  const target = (w, h) => { const tex = mkTex(gl.RGBA16F, gl.RGBA, gl.HALF_FLOAT, w, h), fb = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error('Bloom framebuffer incomplete'); return { tex, fb }; };
+  for (let i = 0, w = PW >> 1, h = PH >> 1; i < n; i++, w = Math.max(1, w >> 1), h = Math.max(1, h >> 1)) levels.push({ w, h, down: target(w, h), up: target(w, h) });
+  const tap = (x, y) => `texture(src, uv + px * vec2(${x}.0, ${y}.0)).rgb`;
+  const down = prog(`#version 300 es
+precision highp float; uniform sampler2D src; uniform vec2 px; uniform float thresh; in vec2 uv; out vec4 o;
+void main(){ vec3 c = (${tap(-1, -1)} + ${tap(1, -1)} + ${tap(-1, 1)} + ${tap(1, 1)}) * 0.25;
+  if (thresh > 0.0) { float l = max(c.r, max(c.g, c.b)); c *= smoothstep(thresh, thresh * 1.85, l); } o = vec4(c, 1.0); }`);
+  const up = prog(`#version 300 es
+precision highp float; uniform sampler2D src, base; uniform vec2 px; in vec2 uv; out vec4 o;
+void main(){ vec3 c = ${tap(-1, 0)} + ${tap(1, 0)} + ${tap(0, -1)} + ${tap(0, 1)} + (${tap(-1, -1)} + ${tap(1, -1)} + ${tap(-1, 1)} + ${tap(1, 1)}) * 0.5;
+  o = vec4(c / 6.0 + texture(base, uv).rgb, 1.0); }`);
+  return { levels, down, up };
+}
+function bloomPass(threshold) {
+  BLOOM ||= bloomSetup();
+  const { levels, down, up } = BLOOM, uni = (p, n) => gl.getUniformLocation(p, n);
+  const draw = (fb, w, h) => { gl.bindFramebuffer(gl.FRAMEBUFFER, fb); gl.viewport(0, 0, w, h); gl.bindVertexArray(vao); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); gl.bindVertexArray(null); };
+  gl.disable(gl.BLEND); gl.useProgram(down); gl.uniform1i(uni(down, 'src'), 0); gl.activeTexture(gl.TEXTURE0);
+  let src = texAcc, sw = PW, sh = PH;
+  levels.forEach((lv, i) => { gl.bindTexture(gl.TEXTURE_2D, src); gl.uniform2f(uni(down, 'px'), 1 / sw, 1 / sh); gl.uniform1f(uni(down, 'thresh'), i ? 0 : threshold); draw(lv.down.fb, lv.w, lv.h); src = lv.down.tex; sw = lv.w; sh = lv.h; });
+  gl.useProgram(up); gl.uniform1i(uni(up, 'src'), 0); gl.uniform1i(uni(up, 'base'), 1);
+  let upSrc = levels[levels.length - 1].down.tex;
+  for (let i = levels.length - 2; i >= 0; i--) {
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, upSrc); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, levels[i].down.tex);
+    gl.uniform2f(uni(up, 'px'), 1 / levels[i + 1].w, 1 / levels[i + 1].h); draw(levels[i].up.fb, levels[i].w, levels[i].h); upSrc = levels[i].up.tex;
+  }
+  gl.activeTexture(gl.TEXTURE0);
+  return upSrc;
+}
 async function setupThree() {
   THREE = await import('three');
   R3 = new THREE.WebGLRenderer({ canvas: out, context: gl });
@@ -332,6 +370,7 @@ function renderFrame3(tf, sub) {
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, rt3Tex); quad();
   }
   gl.disable(gl.BLEND);
+  const bloom = lens.bloom || 0, bloomTex = bloom > 0 ? bloomPass(lens.bloomThreshold ?? 1) : null;
   // HUD and the scene's 2D overlay: drawn once at the frame-center time and composited after tone mapping, in display space.
   octx.setTransform(1, 0, 0, 1, 0, 0); octx.clearRect(0, 0, PW, PH); octx.setTransform(SCALE, 0, 0, SCALE, 0, 0);
   if (sc3.overlay) { octx.save(); sc3.overlay(octx, local(tf), tf, s); octx.restore(); }
@@ -339,8 +378,10 @@ function renderFrame3(tf, sub) {
   const overlayOn = sc3.overlay || s.hud ? 1 : 0;
   gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, texOverlay);
   if (overlayOn) { gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, oc); }
+  if (bloomTex) { gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, bloomTex); }
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, texAcc);
   gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, PW, PH); gl.useProgram(pPost3);
+  gl.uniform1i(uni(pPost3, 'bloomTex'), 2); gl.uniform1f(uni(pPost3, 'bloomAmt'), bloom);
   gl.uniform1i(uni(pPost3, 'acc'), 0); gl.uniform1i(uni(pPost3, 'overlay'), 1); gl.uniform1f(uni(pPost3, 'overlayOn'), overlayOn);
   gl.uniform1f(uni(pPost3, 'exposure'), exposure); gl.uniform1f(uni(pPost3, 'shoulderOn'), lens.shoulder ? 1 : 0); gl.uniform1f(uni(pPost3, 'ca'), caAt(tf)); gl.uniform1f(uni(pPost3, 'vig'), 0.04);
   gl.uniform1f(uni(pPost3, 'grain'), 0.005); gl.uniform1ui(uni(pPost3, 'seed'), Math.round(tf * FPS) + 1); gl.uniform2f(uni(pPost3, 'res'), PW, PH);

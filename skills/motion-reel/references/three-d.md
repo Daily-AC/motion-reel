@@ -29,7 +29,7 @@ The engine loads three.js only when a shot uses it; a 2D-only film is unaffected
 1. `shotAt(frameCenter)` picks the shot. Every subframe of the frame belongs to it.
 2. `frame()` runs once. The rig at the frame center supplies `exposure` and `shoulder`.
 3. For each of N subframes: shutter time `t` (180°, as in 2D), the rig at `t`, a `sample` = `{index, count, jitter, lens, light}`, impact shake from `HITS`. The engine aims the camera (below), calls `update()`, renders the scene into a half-float target and adds `1/N` of its linear radiance to the same RGBA16F accumulator Canvas2D shots use.
-4. Post: chromatic aberration from `HITS`, `× exposure`, optional highlight shoulder, sRGB encode, the overlay (HUD and `overlay()`), vignette, grain.
+4. Post: chromatic aberration from `HITS`, optional bloom, `× exposure`, optional highlight shoulder, sRGB encode, the overlay (HUD and `overlay()`), vignette, grain.
 
 One loop therefore jitters four things at once: shutter time (motion blur), the lens sample (depth of field), the subpixel offset (antialiasing) and the light sample (soft shadows). `sample.lens` and `sample.light` are points in the unit disk, permuted so they do not follow shutter time and centered so their average is the pinhole, point-light frame. With `count = 1` all are zero.
 
@@ -45,6 +45,7 @@ One loop therefore jitters four things at once: shutter time (motion blur), the 
 | `aperture` | Lens radius in scene units (default 0, pinhole). A point at depth z, focused at d, blurs over a circle of radius `aperture · |1/z − 1/d| · (H/2)/tan(fov/2)` pixels. |
 | `exposure` | Multiplies linear radiance before encoding (default 1). |
 | `shoulder` | `true` rolls highlights off with Khronos PBR Neutral's shoulder (no toe): linear values below 0.76 pass unchanged. Default clips like a 2D shot. |
+| `bloom`, `bloomThreshold` | Glow strength (default 0, off) and the linear radiance where glow starts (default 1). Radiance above the threshold is blurred down a mip chain and added before exposure. |
 | `vw` | On a canvas narrower than 16:9, the share of the 16:9 width the shot keeps (default 0.62); the frame grows taller instead. |
 | `near`, `far` | Depth range (default 0.1–1000). Tighten it for wide shots of close surfaces. |
 
@@ -67,7 +68,7 @@ Physically based lights in three.js use physical units (candela for spot and poi
 
 Three.js output is linear radiance, so lights can exceed 1. By default the post clips at 1 like a Canvas2D shot, which keeps designed colors exact: a solid `#0050FF` background renders as `0,80,255`. Set `shoulder: true` for lit sets with hot highlights (emissive cores, lamps, speculars); it compresses only the top of the range, but it also shifts bright design colors (pure blue came out `33,82,241`). Give a screen close-up its own `exposure: 1` without the shoulder so its UI matches the design; give the room shots their own exposure. In the desk example the frames either side of a 2D-to-3D match cut differ by under half a code value on the paper, card and accent colors.
 
-The engine does not add bloom. Bloom on emitters is a large part of some 3D looks: in a measured port it accounted for about a fifth of the mean brightness (see docs/validation.md).
+Use `bloom` when emitters and hot highlights should glow the way they do through a real lens: a light core, a lamp, sparks, a lit screen in a dark room. It needs radiance above `bloomThreshold`, so light such things above 1 (an unlit material color of 2–8, or strong lights) and leave the threshold near 1; a scene with nothing above it is unchanged. Glow is a large part of some 3D looks: in a port of a delivered film whose emissive core and metallic beads glow, the original's post at strength 0.115 and threshold 0.88 accounted for about a fifth of the mean brightness and softened every edge, and the port only matched the original with bloom on. It softens fine detail, so keep it off for flat graphics, interfaces and type. A 2D overlay is composited after bloom and does not glow.
 
 ## Screens and interfaces as textures
 

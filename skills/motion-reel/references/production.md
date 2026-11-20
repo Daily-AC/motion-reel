@@ -63,7 +63,7 @@ Motion blur averages radiance, not display-encoded RGB: convert to linear light,
 
 Raw `readPixels` rows are vertically inverted. The encoder flips them, explicitly converts RGB to BT.709 limited-range YUV, and stamps color metadata into the stream. A tagged file is insufficient if the actual matrix conversion was wrong.
 
-A three.js shot adds each subframe's linear radiance from a half-float target to the same accumulator, then the post applies the rig's exposure and either clips (designed colors come out exact) or applies a highlight shoulder. Each subframe also gets a lens sample and a light sample for depth of field and soft shadows; three-d.md has the details and checks.
+A three.js shot adds each subframe's linear radiance from a half-float target to the same accumulator, then the post adds optional bloom, applies the rig's exposure and either clips (designed colors come out exact) or applies a highlight shoulder. Each subframe also gets a lens sample and a light sample for depth of field and soft shadows; three-d.md has the details and checks.
 
 Use 16 samples as a useful reference setting, not a quality law. For a static diagnostic frame, changing sample count should not materially change mean brightness. For moving edges, inspect whether blur appears and whether the subject remains readable. High FPS, 4K and more samples do not fix weak direction.
 

@@ -117,7 +117,7 @@ A three.js scene renders through a `WebGLRenderer` that shares the compositor's 
 
 The starter's stills at 0, 0.8, 4.6, 8.6, 10.6 and 14.3 s with 8 samples are byte-identical between main and this branch. A full 16-sample render of the starter passed `verify.py` (900 frames, no errors or warnings, mono loss 0.18 dB, cuts within 5 ms of their sound).
 
-Full renders were also compared frame by frame (`framemd5` of the decoded video) against a render from main. Ten renders from main were all identical. Of ten from this branch, eight were identical, including the last six in a row; two differed in the BUILD shot only (frames 459–562 in one, 529–562 in the other: a few frames whose Canvas2D floor grid and lower caption rasterized differently, PSNR 48.7–54 dB, then H.264 carrying the change to the next keyframe). That shot is drawn by the unchanged 2D path, which differs from main only by binding its own vertex array; no mechanism was found, and 2 of 10 against 0 of 10 is not significant (Fisher p ≈ 0.47). It is recorded rather than explained.
+Full renders were also compared frame by frame (`framemd5` of the decoded video) against a reference render from main, 30 renders each from main and this branch, interleaved on the same machine with the same settings. Main deviated in 7 of 30, this branch in 5 of 30. Every deviation but one is in the BUILD shot (the other is in IGNITION, on main): a few frames whose Canvas2D floor grid and lower caption rasterize slightly differently (PSNR 48.7–54.5 dB on the frames measured), after which H.264 carries the change to the next keyframe. This is pre-existing nondeterminism of Canvas2D rasterization on the GPU, not something the three.js path introduced. Stills of the same frames have been byte-identical every time.
 
 On a portrait canvas the HUD now sits in the y ≈ 250 band that feed apps leave clear; landscape output is unchanged (the stills above were rechecked after this change).
 
@@ -131,6 +131,7 @@ Measured on rendered stills and an encoded film, now in `tests/check_bundle.py` 
 | Card crossing at 59.96 px/frame (analytic): measured speed, blur length against speed × 0.5 frame | 60.00 px/frame; blur 30.66 px for 30.00 expected (+2.2%, limit ±15%) |
 | Depth of field, Laplacian variance of near / far checkered cards | aperture 0: 11108 / 11034 focused near, 11106 / 11032 focused far. Aperture 0.3 focused near: 11106 / 819 (far 13.5× lower). Focused far: 882 / 11028 |
 | 2D → 3D → 2D cuts at 1.02 s and 2.02 s, inside the shutters of frames 61 and 121 | Frames 60–61 / 62–63 and 120–121 / 122–123 hold only their own shot's color (0 pixels off by more than 12 levels); a synthetic one-subframe-in-sixteen blend is rejected by the same check |
+| Bloom 0.3, threshold 1, on a 10 px disc over linear 0.02, same frame times with and without bloom | Disc at radiance 0.6: frames byte-identical. Disc at 8.0: footprint 254.97 both ways; ring 14–30 px from the centre 0.0199 → 0.4373 linear, ring 30–60 px 0.0199 → 0.1054 |
 
 The first lens/light sample sets were Vogel spirals whose mean is off-center for small counts (0.16 of the radius at 4 samples); the brightness spread was 0.79%. Centering each set brought it to 0.54%.
 
@@ -150,6 +151,16 @@ Act I (2.0–12.0 s) of a 48 s three.js film with 12,000 instanced spheres, shad
 | 6.00 s | 51.8 / 0.0414 | 40.0 (−22.8%) / 0.0548 (+32%) | 51.8 (0.0%) / 0.0408 (−1.4%) | 39.5 (−23.9%) |
 | 11.00 s | 34.5 / 0.0322 | 27.4 (−20.6%) / 0.0405 (+26%) | 34.5 (0.0%) / 0.0316 (−1.9%) | 27.2 (−21.2%) |
 
-With the engine's own post the port misses the 5% brightness and 20% detail targets. Geometry, camera, depth of field, motion blur and soft shadows match (PSNR 35.4–38.2 dB against the original once its post is applied to the engine's accumulator, compared with 19.5–26.3 dB with the engine's post). The whole difference is the original's bloom: its post with bloom set to 0 is as dark as the engine's, and bloom also softens every bead edge, which the detail metric counts. The engine has no bloom; this is recorded as a limit, not hidden by tuning exposure.
+Without bloom the engine's post misses the 5% brightness and 20% detail targets. Geometry, camera, depth of field, motion blur and soft shadows match (PSNR 35.4–38.2 dB against the original once its post is applied to the engine's accumulator, against 19.5–26.3 dB with the engine's post). The whole difference was the original's bloom: its post with bloom set to 0 is as dark as the engine's, and bloom also softens every bead edge, which the detail metric counts.
+
+The engine then gained optional bloom for three.js shots, the same dual-filter chain, set from the rig and off by default. With the engine's own post and the original's values (`bloom: 0.115, bloomThreshold: 0.88`), no tuning, the port passes at all three times:
+
+| Original time | Original luma / detail | Port, engine post + bloom | PSNR against the original |
+|---|---|---|---|
+| 2.50 s | 79.6 / 0.0330 | 81.0 (+1.8%) / 0.0340 (+3.0%) | 31.4 dB |
+| 6.00 s | 51.8 / 0.0414 | 52.7 (+1.7%) / 0.0411 (−0.7%) | 34.9 dB |
+| 11.00 s | 34.5 / 0.0322 | 35.0 (+1.4%) / 0.0327 (+1.6%) | 36.7 dB |
+
+The remaining 1–2% is the original's stronger vignette and shadow grade, which were not ported. Bloom off stays off: the starter's stills remain byte-identical to main, and all 420 frames of the mixed example render identically with the bloom code present and unset.
 
 Not covered: Linux and Windows rendering of the 3D path, 4K renders of three.js shots, and any listening of the example's sound.
