@@ -230,3 +230,7 @@ The rest check did not separate accepted from rejected, so it is not a gate. Wit
 ### Continuous shot boundaries in `verify.py`
 
 A film whose six shots run as one continuous move (every boundary inside a slow camera drift) changed 0 of 9,216 pixels at each cue in the 128×72 cut detector; `verify.py` still timed a "visual cut" 3 frames early and gated the music against it, which forced the score to be shifted toward invisible boundaries. Cut cues in three other films started 63–6,315 pixels at once. A cue with fewer than 20 is now reported as `no_picture_change` and not checked; the same film then reported all five boundaries that way and stayed `technical_ok`.
+
+### 3D regression after RGBA32F accumulation
+
+The three.js port of a 3D film's first act (10 s, 24 samples, bloom) was re-rendered with the new engine and compared with its render from the RGBA16F engine. Re-rendering with the old engine reproduced that render byte for byte, so every difference below comes from the accumulator. Mean level at 2.5, 6 and 9.5 s rose by 0.10–0.12 code values (0.2–0.3%); PSNR 39.7–40.8 dB; 3.7% of pixels differ by more than 8 and 0.19% by more than 20, almost all on the bright, high-gradient edges of small highlights, where the encoder redistributes its noise when the input shifts slightly. Side by side the frames look the same.
